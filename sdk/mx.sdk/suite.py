@@ -115,6 +115,9 @@ suite = {
           "aarch64" : {
             "sha1" : "91acc0b24ae5fe9b13d1d313c851b7b308b66aa6",
             "urls": ["https://lafo.ssw.uni-linz.ac.at/pub/graal-external-deps/upx/upx-3.96-arm64_linux.tar.gz"],
+          },
+          "<others>" : {
+            "optional": True,
           }
         },
         "windows" : {
@@ -179,18 +182,22 @@ suite = {
       ],
     },
     "LLVM_ORG" : {
-      "version" : "14.0.3-2-g772a7a659e-bgd661ed0276",
-      "host" : "https://lafo.ssw.uni-linz.ac.at/pub/llvm-org",
+      "version" : "14.0.3-4-gbefdd0bf44-bgb9621f43ed",
+      "host" : "https://graalvm.oraclecorp.com/ci-legacy/slavefiles2/llvm-org-staging",
       "os_arch" : {
         "linux" : {
           "amd64" : {
             "urls" : ["{host}/llvm-llvmorg-{version}-linux-amd64.tar.gz"],
-            "sha1" : "f32dc5497d9dd679f9ef42fd26918c3ad659b8e3",
+            "sha1" : "572f73604b7d14d7e397a70aecf98faa28374df8",
           },
           "aarch64" : {
             "urls" : ["{host}/llvm-llvmorg-{version}-linux-aarch64.tar.gz"],
             "sha1" : "8bf8d3f96b6be5d361e809d1928c3b6c46791dfe",
-          }
+          },
+          "riscv64": {
+            "urls" : ["{host}/llvm-llvmorg-{version}-linux-riscv64.tar.gz"],
+            "sha1" : "7840da96ab3767c0d30fd7b7084de35a06cf9387",
+          },
         },
         "darwin" : {
           "amd64" : {

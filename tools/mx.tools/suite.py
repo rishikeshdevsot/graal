@@ -336,7 +336,10 @@ suite = {
                     "aarch64" : {
                         "urls" : ["https://lafo.ssw.uni-linz.ac.at/pub/graal-external-deps/visualvm/visualvm-1083-linux-aarch64.tar.gz"],
                         "sha1" : "0a28f1d5b025bab8b16a44193093289f0a0cc3f1",
-                    }
+                    },
+                    "<others>": {
+                        "optional": True,
+                    },
                 },
                 "darwin" : {
                     "amd64" : {
