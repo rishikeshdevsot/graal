@@ -27,6 +27,7 @@ package com.oracle.svm.core.graal.llvm;
 import static org.graalvm.compiler.debug.GraalError.shouldNotReachHere;
 import static org.graalvm.compiler.debug.GraalError.unimplemented;
 
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -35,6 +36,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import com.oracle.graal.pointsto.infrastructure.OriginalClassProvider;
+import com.oracle.graal.pointsto.meta.AnalysisType;
+import com.oracle.svm.hosted.image.sources.SourceManager;
+import com.oracle.svm.hosted.meta.HostedType;
+import jdk.vm.ci.meta.LineNumberTable;
+import jdk.vm.ci.meta.ResolvedJavaType;
 import org.graalvm.compiler.code.CompilationResult;
 import org.graalvm.compiler.core.common.NumUtil;
 import org.graalvm.compiler.core.common.calc.Condition;
@@ -48,6 +55,8 @@ import org.graalvm.compiler.debug.GraalError;
 import org.graalvm.compiler.graph.GraalGraphError;
 import org.graalvm.compiler.graph.Node;
 import org.graalvm.compiler.graph.NodeInputList;
+import org.graalvm.compiler.graph.NodeSourcePosition;
+import org.graalvm.compiler.graph.SourceLanguagePosition;
 import org.graalvm.compiler.graph.iterators.NodeIterable;
 import org.graalvm.compiler.lir.ConstantValue;
 import org.graalvm.compiler.lir.LIRFrameState;
@@ -124,6 +133,7 @@ import jdk.vm.ci.meta.Assumptions;
 import jdk.vm.ci.meta.JavaConstant;
 import jdk.vm.ci.meta.ResolvedJavaMethod;
 import jdk.vm.ci.meta.Value;
+import org.graalvm.nativeimage.ImageSingletons;
 
 public class NodeLLVMBuilder implements NodeLIRBuilderTool, SubstrateNodeLIRBuilder {
     private final LLVMGenerator gen;
@@ -280,7 +290,42 @@ public class NodeLLVMBuilder implements NodeLIRBuilderTool, SubstrateNodeLIRBuil
                  * There can be cases in which the result of an instruction is already set before by
                  * other instructions.
                  */
-                if (!valueMap.containsKey(node)) {
+                if(node.getNodeSourcePosition() != null){
+
+                    NodeSourcePosition position = node.getNodeSourcePosition();
+                    int bci = position.getBCI();
+                    bci = (bci > 0) ? bci : 0;
+                    ResolvedJavaMethod method = position.getMethod();
+                    LineNumberTable lineNumberTable = method.getLineNumberTable();
+                    if (lineNumberTable != null) {
+                        System.out.println("line number is" + lineNumberTable.getLineNumber(bci) + "\n");
+                    }   
+                    else{
+                        System.out.println("line number table is empty \n");
+                    }   
+                    ResolvedJavaType declaringClass = method.getDeclaringClass();
+                    Class<?> clazz = null;
+                    if (declaringClass instanceof OriginalClassProvider) {
+                        clazz = ((OriginalClassProvider) declaringClass).getJavaClass();
+                    }   
+                    /*  
+                     * HostedType wraps an AnalysisType and both HostedType and AnalysisType punt calls to
+                     * getSourceFilename to the wrapped class so for consistency we need to do the path
+                     * lookup relative to the doubly unwrapped HostedType or singly unwrapped AnalysisType.
+                     */  
+                    if (declaringClass instanceof HostedType) {
+                        declaringClass = ((HostedType) declaringClass).getWrapped();
+                    }   
+                    if (declaringClass instanceof AnalysisType) {
+                        declaringClass = ((AnalysisType) declaringClass).getWrapped();
+                    }
+
+                    SourceManager sourceManager = new SourceManager();
+                    DebugContext debugContext = node.getDebug();
+                    Path fullFilePath = sourceManager.findAndCacheSource(declaringClass, clazz, debugContext);
+                    Path filename = fullFilePath.getFileName();
+                    System.out.println("filename: " + filename);
+                }if (!valueMap.containsKey(node)) {
                     ValueNode valueNode = (ValueNode) node;
                     try {
                         gen.getDebugInfoPrinter().printNode(valueNode);
