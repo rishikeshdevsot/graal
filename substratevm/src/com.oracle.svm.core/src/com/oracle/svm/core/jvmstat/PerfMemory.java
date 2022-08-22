@@ -35,7 +35,7 @@ import org.graalvm.nativeimage.UnmanagedMemory;
 import org.graalvm.word.WordFactory;
 
 import com.oracle.svm.core.SubstrateUtil;
-import com.oracle.svm.core.annotate.NeverInline;
+import com.oracle.svm.core.NeverInline;
 import com.oracle.svm.core.jdk.Target_java_nio_Buffer;
 import com.oracle.svm.core.jdk.Target_java_nio_DirectByteBuffer;
 

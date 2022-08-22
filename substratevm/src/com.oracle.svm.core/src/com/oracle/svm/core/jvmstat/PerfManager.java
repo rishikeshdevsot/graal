@@ -40,7 +40,7 @@ import org.graalvm.nativeimage.c.type.CLongPointer;
 import org.graalvm.word.WordFactory;
 
 import com.oracle.svm.core.Isolates;
-import com.oracle.svm.core.annotate.DuplicatedInNativeCode;
+import com.oracle.svm.core.util.DuplicatedInNativeCode;
 import com.oracle.svm.core.heap.Heap;
 import com.oracle.svm.core.jdk.RuntimeSupport;
 import com.oracle.svm.core.locks.VMCondition;
