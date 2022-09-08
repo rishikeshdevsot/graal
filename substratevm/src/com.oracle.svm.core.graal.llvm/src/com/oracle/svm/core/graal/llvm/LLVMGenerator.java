@@ -36,6 +36,7 @@ import static jdk.vm.ci.code.MemoryBarriers.JMM_PRE_VOLATILE_WRITE;
 import static org.graalvm.compiler.debug.GraalError.shouldNotReachHere;
 import static org.graalvm.compiler.debug.GraalError.unimplemented;
 
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -44,6 +45,14 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiFunction;
 
+import com.oracle.graal.pointsto.infrastructure.OriginalClassProvider;
+import com.oracle.graal.pointsto.meta.AnalysisType;
+import com.oracle.svm.hosted.image.sources.SourceManager;
+import com.oracle.svm.shadowed.org.bytedeco.javacpp.annotation.Cast;
+import com.oracle.svm.shadowed.org.bytedeco.llvm.LLVM.LLVMContextRef;
+import com.oracle.svm.shadowed.org.bytedeco.llvm.LLVM.LLVMMetadataRef;
+import com.oracle.svm.shadowed.org.bytedeco.llvm.global.LLVM;
+import jdk.vm.ci.meta.LineNumberTable;
 import org.graalvm.compiler.code.CompilationResult;
 import org.graalvm.compiler.core.common.CompressEncoding;
 import org.graalvm.compiler.core.common.LIRKind;
@@ -59,6 +68,9 @@ import org.graalvm.compiler.core.common.spi.LIRKindTool;
 import org.graalvm.compiler.core.common.type.RawPointerStamp;
 import org.graalvm.compiler.core.common.type.Stamp;
 import org.graalvm.compiler.core.common.type.StampFactory;
+import org.graalvm.compiler.debug.DebugContext;
+import org.graalvm.compiler.graph.Node;
+import org.graalvm.compiler.graph.NodeSourcePosition;
 import org.graalvm.compiler.lir.LIRFrameState;
 import org.graalvm.compiler.lir.LIRInstruction;
 import org.graalvm.compiler.lir.LabelRef;
@@ -858,6 +870,16 @@ public class LLVMGenerator implements LIRGeneratorTool, SubstrateLIRGenerator {
     LLVMValueRef buildStatepointCall(LLVMValueRef callee, boolean nativeABI, long statepointId, LLVMValueRef... args) {
         LLVMValueRef result;
         result = builder.buildCall(callee, args);
+        //LLVMValueRef mdString = builder.constantString("test1");
+//        builder.setMetadata(result, "kind1", mdString);
+
+//        String mdTest = "test1";
+//        LLVMContextRef context = LLVM.LLVMGetModuleContext(builder.getModule());
+//        LLVMMetadataRef mdString = LLVM.LLVMMDStringInContext2(context, mdTest, mdTest.length());
+//        LLVMMetadataRef MD = LLVM.LLVMMDNodeInContext2(context, mdString, mdTest.length());
+//        LLVM.LLVMGlobalSetMetadata(result, 9, MD);
+
+
         builder.setCallSiteAttribute(result, Attribute.StatepointID, Long.toString(statepointId));
 
         if (!nativeABI && LLVMOptions.ReturnSpecialRegs.getValue()) {
@@ -936,6 +958,8 @@ public class LLVMGenerator implements LIRGeneratorTool, SubstrateLIRGenerator {
             assert successor != null && handler != null;
             call = buildStatepointInvoke(callee, nativeABI, successor, handler, patchpointId, callArguments);
         }
+//        LLVMMetadataRef mdString = builder.testString(builder.constantString("test2 more and more"));
+//        builder.setMetadata(call, "kind1", mdString);
 
         return (isVoidReturnType(getLLVMFunctionReturnType(targetMethod, false))) ? null : new LLVMVariable(call);
     }
@@ -1807,7 +1831,7 @@ public class LLVMGenerator implements LIRGeneratorTool, SubstrateLIRGenerator {
         }
 
         void printFunction(StructuredGraph graph, NodeLLVMBuilder nodeBuilder) {
-            if (debugLevel >= DebugLevel.Function.level) {
+            if (debugLevel == DebugLevel.Function.level) {
                 indent();
                 List<JavaKind> printfTypes = new ArrayList<>();
                 List<LLVMValueRef> printfArgs = new ArrayList<>();
@@ -1823,14 +1847,56 @@ public class LLVMGenerator implements LIRGeneratorTool, SubstrateLIRGenerator {
         }
 
         void printBlock(Block block) {
-            if (debugLevel >= DebugLevel.Block.level) {
+            if (debugLevel == DebugLevel.Block.level) {
                 emitPrintf("In block " + block.toString());
             }
         }
 
         void printNode(ValueNode valueNode) {
             if (debugLevel >= DebugLevel.Node.level) {
-                emitPrintf(valueNode.toString());
+                Node node = valueNode;
+                NodeSourcePosition position = node.getNodeSourcePosition();
+                if (position == null){
+                    emitPrintf(valueNode.toString());
+                    return;
+                }
+                //System.out.println("Control reaches here\n");
+                int bci = position.getBCI();
+                bci = (bci > 0) ? bci : 0;
+                ResolvedJavaMethod method = position.getMethod();
+                LineNumberTable lineNumberTable = method.getLineNumberTable();
+                ResolvedJavaType declaringClass = method.getDeclaringClass();
+
+                // Printing the source
+                Class<?> clazz = null;
+                if (declaringClass instanceof OriginalClassProvider) {
+                    clazz = ((OriginalClassProvider) declaringClass).getJavaClass();
+                }
+                /*
+                 * HostedType wraps an AnalysisType and both HostedType and AnalysisType punt calls to
+                 * getSourceFilename to the wrapped class so for consistency we need to do the path
+                 * lookup relative to the doubly unwrapped HostedType or singly unwrapped AnalysisType.
+                 */
+                if (declaringClass instanceof HostedType) {
+                    declaringClass = ((HostedType) declaringClass).getWrapped();
+                }
+                if (declaringClass instanceof AnalysisType) {
+                    declaringClass = ((AnalysisType) declaringClass).getWrapped();
+                }
+                SourceManager sourceManager = new SourceManager();
+                DebugContext debugContext = node.getDebug();
+                Path fullFilePath = sourceManager.findAndCacheSource(declaringClass, clazz, debugContext);
+                String filePathString = "filename = ";
+                if(fullFilePath != null) {
+                    Path filename = fullFilePath.getFileName();
+                    filePathString = filePathString + filename;
+                }
+                if(lineNumberTable != null) {
+                    emitPrintf(valueNode.toString() + " " + filePathString + " : " + String.valueOf(lineNumberTable.getLineNumber(bci)));
+                }
+                else{
+                    emitPrintf(valueNode.toString() + " " + filePathString + " : " + "lineNumberTable empty");
+                }
             }
         }
 
@@ -1841,20 +1907,20 @@ public class LLVMGenerator implements LIRGeneratorTool, SubstrateLIRGenerator {
         }
 
         void printBreakpoint() {
-            if (debugLevel >= DebugLevel.Function.level) {
+            if (debugLevel == DebugLevel.Function.level) {
                 emitPrintf("breakpoint");
             }
         }
 
         void printRetVoid() {
-            if (debugLevel >= DebugLevel.Function.level) {
+            if (debugLevel == DebugLevel.Function.level) {
                 emitPrintf("Return");
                 deindent();
             }
         }
 
         void printRet(JavaKind kind, Value input) {
-            if (debugLevel >= DebugLevel.Function.level) {
+            if (debugLevel == DebugLevel.Function.level) {
                 emitPrintf("Return", new JavaKind[]{kind}, new LLVMValueRef[]{getVal(input)});
                 deindent();
             }

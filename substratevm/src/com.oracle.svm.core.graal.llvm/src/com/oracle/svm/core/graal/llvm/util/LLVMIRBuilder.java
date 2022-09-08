@@ -31,9 +31,13 @@ import static com.oracle.svm.core.graal.llvm.util.LLVMUtils.dumpValues;
 import static org.graalvm.compiler.debug.GraalError.shouldNotReachHere;
 
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
+import com.oracle.svm.shadowed.org.bytedeco.javacpp.annotation.Cast;
+import com.oracle.svm.shadowed.org.bytedeco.llvm.LLVM.LLVMDIBuilderRef;
+import com.oracle.svm.shadowed.org.bytedeco.llvm.LLVM.LLVMMetadataRef;
 import org.graalvm.compiler.core.common.NumUtil;
 import org.graalvm.compiler.core.common.calc.Condition;
 
@@ -56,9 +60,10 @@ public class LLVMIRBuilder implements AutoCloseable {
 
     private LLVMContextRef context;
     private LLVMBuilderRef builder;
+    public LLVMDIBuilderRef diBuilder;
     private LLVMModuleRef module;
     private LLVMValueRef function;
-
+    public HashMap<String, LLVMMetadataRef> filenameToCU;
     private boolean primary;
     private LLVMHelperFunctions helpers;
 
@@ -66,6 +71,13 @@ public class LLVMIRBuilder implements AutoCloseable {
         this.context = LLVM.LLVMContextCreate();
         this.builder = LLVM.LLVMCreateBuilderInContext(context);
         this.module = LLVM.LLVMModuleCreateWithNameInContext(name, context);
+        String dwarf_flag = "Dwarf Version";
+        String dbginfo_flag = "Debug Info Version";
+        //LLVM.LLVMAddModuleFlag(this.module, LLVM.LLVMModuleFlagBehaviorWarning, dwarf_flag, dwarf_flag.length(), mdString("v3"));
+        LLVMValueRef dbgInfo_val = LLVM.LLVMConstInt(LLVM.LLVMInt32TypeInContext(context), LLVM.LLVMDebugMetadataVersion(), 0);
+        LLVM.LLVMAddModuleFlag(this.module, LLVM.LLVMModuleFlagBehaviorWarning, dbginfo_flag, dbginfo_flag.length(), LLVM.LLVMValueAsMetadata(dbgInfo_val));
+        this.diBuilder = LLVM.LLVMCreateDIBuilder(this.module);
+        filenameToCU = new HashMap<String, LLVMMetadataRef>();
         this.primary = true;
         this.helpers = new LLVMHelperFunctions(this);
     }
@@ -74,6 +86,8 @@ public class LLVMIRBuilder implements AutoCloseable {
         this.context = primary.context;
         this.builder = LLVM.LLVMCreateBuilderInContext(context);
         this.module = primary.module;
+        this.diBuilder = LLVM.LLVMCreateDIBuilder(this.module);
+        filenameToCU = new HashMap<String, LLVMMetadataRef>();
         this.function = null;
         this.primary = false;
         this.helpers = null;
@@ -97,6 +111,14 @@ public class LLVMIRBuilder implements AutoCloseable {
         return bitcode;
     }
 
+    public LLVMModuleRef getModule() {
+        return this.module;
+    }
+    public LLVMBuilderRef getBuilderRef() {
+        return this.builder;
+    }
+    public LLVMContextRef getContext() { return this.context; }
+
     public boolean verifyBitcode() {
         if (LLVM.LLVMVerifyModule(module, LLVM.LLVMPrintMessageAction, new BytePointer((Pointer) null)) == TRUE) {
             LLVM.LLVMDumpModule(module);
@@ -109,6 +131,9 @@ public class LLVMIRBuilder implements AutoCloseable {
     public void close() {
         LLVM.LLVMDisposeBuilder(builder);
         builder = null;
+        LLVM.LLVMDIBuilderFinalize(diBuilder);
+        filenameToCU.clear();
+        diBuilder = null;
         if (primary) {
             LLVM.LLVMDisposeModule(module);
             module = null;
@@ -547,6 +572,10 @@ public class LLVMIRBuilder implements AutoCloseable {
         return LLVM.LLVMConstStringInContext(context, string, string.length(), FALSE);
     }
 
+    public LLVMMetadataRef mdString(String string){
+        return LLVM.LLVMMDStringInContext2(context, string, string.length());
+    }
+
     public LLVMValueRef constantVector(LLVMValueRef... values) {
         return LLVM.LLVMConstVector(new PointerPointer<>(values), values.length);
     }
@@ -797,6 +826,24 @@ public class LLVMIRBuilder implements AutoCloseable {
         System.arraycopy(weights, 0, values, 1, weights.length);
         return LLVM.LLVMMDNodeInContext(context, new PointerPointer<>(values), values.length);
     }
+
+    public LLVMValueRef testString(LLVMValueRef... weights) {
+        String branchWeightsName = "testString";
+        LLVMValueRef[] values = new LLVMValueRef[weights.length + 1];
+        values[0] = LLVM.LLVMMDStringInContext(context, branchWeightsName, branchWeightsName.length());
+        System.arraycopy(weights, 0, values, 1, weights.length);
+        return LLVM.LLVMMDNodeInContext(context, new PointerPointer<>(values), values.length);
+    }
+
+    public LLVMMetadataRef testString2(LLVMMetadataRef... weights) {
+        String branchWeightsName = "testString";
+        LLVMMetadataRef[] values = new LLVMMetadataRef[weights.length + 1];
+        values[0] = LLVM.LLVMMDStringInContext2(context, branchWeightsName, branchWeightsName.length());
+        System.arraycopy(weights, 0, values, 1, weights.length);
+        return LLVM.LLVMMDNodeInContext2(context, new PointerPointer<>(values), values.length);
+    }
+
+
 
     /* Comparisons */
 
@@ -1202,6 +1249,10 @@ public class LLVMIRBuilder implements AutoCloseable {
         LLVMTypeRef frameAddressType = functionType(rawPointerType(), intType());
         return buildIntrinsicCall("llvm.frameaddress", frameAddressType, level);
     }
+
+//    public LLVMMetadataRef buildDILocGet(String filename, int lineNumber){
+//        return
+//    }
 
     /* Atomic */
 

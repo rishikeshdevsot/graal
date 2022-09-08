@@ -28,7 +28,10 @@ import static com.oracle.svm.core.util.VMError.unimplemented;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.concurrent.locks.ReentrantLock;
 
+import com.oracle.svm.hosted.image.sources.SourceManager;
 import org.graalvm.compiler.code.CompilationResult;
 import org.graalvm.compiler.core.common.CompilationIdentifier;
 import org.graalvm.compiler.debug.CounterKey;
@@ -60,10 +63,12 @@ import jdk.vm.ci.meta.JavaConstant;
 import jdk.vm.ci.meta.JavaKind;
 import jdk.vm.ci.meta.ResolvedJavaMethod;
 import jdk.vm.ci.meta.VMConstant;
+import org.graalvm.nativeimage.ImageSingletons;
 
 public class SubstrateLLVMBackend extends SubstrateBackend {
     private static final TimerKey EmitLLVM = DebugContext.timer("EmitLLVM").doc("Time spent generating LLVM from HIR.");
     private static final TimerKey BackEnd = DebugContext.timer("BackEnd").doc("Time spent in EmitLLVM and Populate.");
+    private ReentrantLock lock = new ReentrantLock();
 
     public SubstrateLLVMBackend(Providers providers) {
         super(providers);
@@ -100,6 +105,11 @@ public class SubstrateLLVMBackend extends SubstrateBackend {
                     RegisterConfig config, LIRSuites lirSuites) {
         DebugContext debug = graph.getDebug();
         try (DebugContext.Scope s = debug.scope("BackEnd", graph.getLastSchedule()); DebugCloseable a = BackEnd.start(debug)) {
+            lock.lock();
+            if(ImageSingletons.contains(SourceManager.class) == false) {
+                ImageSingletons.add(SourceManager.class, new SourceManager());
+            }
+            lock.unlock();
             emitLLVM(graph, result);
             dumpDebugInfo(result, graph);
         } catch (Throwable e) {
@@ -120,6 +130,7 @@ public class SubstrateLLVMBackend extends SubstrateBackend {
             NodeLLVMBuilder nodeBuilder = newNodeLLVMBuilder(graph, generator);
 
             /* LLVM generation */
+
             generate(nodeBuilder, graph);
             byte[] bitcode = generator.getBitcode();
             result.setTargetCode(bitcode, bitcode.length);
@@ -175,7 +186,6 @@ public class SubstrateLLVMBackend extends SubstrateBackend {
             DebugContext.counter("InfopointsEmitted").add(debug, compilationResult.getInfopoints().size());
             DebugContext.counter("DataPatches").add(debug, ldp.size());
         }
-
         debug.dump(DebugContext.BASIC_LEVEL, compilationResult, "After code generation");
     }
 }
