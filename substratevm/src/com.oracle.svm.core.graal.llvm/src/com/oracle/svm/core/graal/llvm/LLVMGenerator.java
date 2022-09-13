@@ -175,6 +175,7 @@ public class LLVMGenerator implements LIRGeneratorTool, SubstrateLIRGenerator {
     private final boolean canModifySpecialRegisters;
     private final boolean returnsEnum;
     private final boolean returnsCEnum;
+    private final boolean sourceDbgInfo;
 
     private Block currentBlock;
     private final Map<AbstractBeginNode, LLVMBasicBlockRef> basicBlockMap = new HashMap<>();
@@ -186,7 +187,7 @@ public class LLVMGenerator implements LIRGeneratorTool, SubstrateLIRGenerator {
     private final LLVMValueRef[] stackSlots = new LLVMValueRef[SpecialRegister.count()];
     private final Map<Constant, String> constants = new HashMap<>();
 
-    LLVMGenerator(Providers providers, CompilationResult result, ResolvedJavaMethod method, int debugLevel) {
+    LLVMGenerator(Providers providers, CompilationResult result, ResolvedJavaMethod method, int debugLevel, boolean sourceDbgInfo) {
         this.providers = providers;
         this.compilationResult = result;
         this.builder = new LLVMIRBuilder(method.format("%H.%n"));
@@ -197,6 +198,7 @@ public class LLVMGenerator implements LIRGeneratorTool, SubstrateLIRGenerator {
         this.functionName = SubstrateUtil.uniqueShortName(method);
         this.isEntryPoint = isEntryPoint(method);
         this.canModifySpecialRegisters = canModifySpecialRegisters(method);
+        this.sourceDbgInfo = sourceDbgInfo;
 
         ResolvedJavaType returnType = method.getSignature().getReturnType(null).resolve(null);
         this.returnsEnum = returnType.isEnum();
@@ -251,6 +253,8 @@ public class LLVMGenerator implements LIRGeneratorTool, SubstrateLIRGenerator {
     DebugInfoPrinter getDebugInfoPrinter() {
         return debugInfoPrinter;
     }
+
+    boolean getSrcDebugInfo() { return sourceDbgInfo; }
 
     /* Function */
 

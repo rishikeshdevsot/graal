@@ -68,7 +68,8 @@ import org.graalvm.nativeimage.ImageSingletons;
 public class SubstrateLLVMBackend extends SubstrateBackend {
     private static final TimerKey EmitLLVM = DebugContext.timer("EmitLLVM").doc("Time spent generating LLVM from HIR.");
     private static final TimerKey BackEnd = DebugContext.timer("BackEnd").doc("Time spent in EmitLLVM and Populate.");
-    private ReentrantLock lock = new ReentrantLock();
+    //TODO: Avoid this lock if possible
+    private ReentrantLock imageSingletonesLock = new ReentrantLock();
 
     public SubstrateLLVMBackend(Providers providers) {
         super(providers);
@@ -86,7 +87,7 @@ public class SubstrateLLVMBackend extends SubstrateBackend {
         CompilationResult result = new CompilationResult(identifier);
         result.setMethods(method, Collections.emptySet());
 
-        LLVMGenerator generator = new LLVMGenerator(getProviders(), result, method, 0);
+        LLVMGenerator generator = new LLVMGenerator(getProviders(), result, method, 0, false);
         generator.createJNITrampoline(threadArg, threadIsolateOffset, methodIdArg, methodObjEntryPointOffset);
         byte[] bitcode = generator.getBitcode();
         result.setTargetCode(bitcode, bitcode.length);
@@ -105,11 +106,6 @@ public class SubstrateLLVMBackend extends SubstrateBackend {
                     RegisterConfig config, LIRSuites lirSuites) {
         DebugContext debug = graph.getDebug();
         try (DebugContext.Scope s = debug.scope("BackEnd", graph.getLastSchedule()); DebugCloseable a = BackEnd.start(debug)) {
-            lock.lock();
-            if(ImageSingletons.contains(SourceManager.class) == false) {
-                ImageSingletons.add(SourceManager.class, new SourceManager());
-            }
-            lock.unlock();
             emitLLVM(graph, result);
             dumpDebugInfo(result, graph);
         } catch (Throwable e) {
@@ -126,11 +122,18 @@ public class SubstrateLLVMBackend extends SubstrateBackend {
             assert !graph.hasValueProxies();
 
             ResolvedJavaMethod method = graph.method();
-            LLVMGenerator generator = new LLVMGenerator(getProviders(), result, method, LLVMOptions.IncludeLLVMDebugInfo.getValue());
+            LLVMGenerator generator = new LLVMGenerator(getProviders(), result, method, LLVMOptions.IncludeLLVMDebugInfo.getValue(),
+                    LLVMOptions.IncludeLLVMSourceDebugInfo.getValue());
             NodeLLVMBuilder nodeBuilder = newNodeLLVMBuilder(graph, generator);
 
             /* LLVM generation */
-
+            if(nodeBuilder.getLIRGeneratorTool().getSrcDebugInfo()) {
+                imageSingletonesLock.lock();
+                if (ImageSingletons.contains(SourceManager.class) == false) {
+                    ImageSingletons.add(SourceManager.class, new SourceManager());
+                }
+                imageSingletonesLock.unlock();
+            }
             generate(nodeBuilder, graph);
             byte[] bitcode = generator.getBitcode();
             result.setTargetCode(bitcode, bitcode.length);

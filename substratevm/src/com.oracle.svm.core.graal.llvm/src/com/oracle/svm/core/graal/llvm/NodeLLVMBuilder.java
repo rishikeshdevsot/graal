@@ -34,11 +34,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.locks.ReentrantLock;
 
-import com.oracle.svm.shadowed.org.bytedeco.javacpp.BytePointer;
 import com.oracle.svm.shadowed.org.bytedeco.javacpp.PointerPointer;
-import com.oracle.svm.shadowed.org.bytedeco.javacpp.annotation.ByPtrPtr;
-import com.oracle.svm.shadowed.org.bytedeco.javacpp.annotation.Cast;
-import com.oracle.svm.shadowed.org.bytedeco.llvm.LLVM.LLVMDIBuilderRef;
 import com.oracle.svm.shadowed.org.bytedeco.llvm.LLVM.LLVMMetadataRef;
 import org.graalvm.compiler.code.CompilationResult;
 import org.graalvm.compiler.core.common.NumUtil;
@@ -292,49 +288,6 @@ public class NodeLLVMBuilder implements NodeLIRBuilderTool, SubstrateNodeLIRBuil
 
         for (Node node : blockMap.get(block)) {
             if (node instanceof ValueNode) {
-                /*
-                 * There can be cases in which the result of an instruction is already set before by
-                 * other instructions.
-                 */
-//                if(node.getNodeSourcePosition() != null){
-//
-//                    NodeSourcePosition position = node.getNodeSourcePosition();
-//                    int bci = position.getBCI();
-//                    bci = (bci > 0) ? bci : 0;
-//                    ResolvedJavaMethod method = position.getMethod();
-//                    LineNumberTable lineNumberTable = method.getLineNumberTable();
-//                    ResolvedJavaType declaringClass = method.getDeclaringClass();
-//                    Class<?> clazz = null;
-//                    if (declaringClass instanceof OriginalClassProvider) {
-//                        clazz = ((OriginalClassProvider) declaringClass).getJavaClass();
-//                    }
-//                    /*
-//                     * HostedType wraps an AnalysisType and both HostedType and AnalysisType punt calls to
-//                     * getSourceFilename to the wrapped class so for consistency we need to do the path
-//                     * lookup relative to the doubly unwrapped HostedType or singly unwrapped AnalysisType.
-//                     */
-//                    if (declaringClass instanceof HostedType) {
-//                        declaringClass = ((HostedType) declaringClass).getWrapped();
-//                    }
-//                    if (declaringClass instanceof AnalysisType) {
-//                        declaringClass = ((AnalysisType) declaringClass).getWrapped();
-//                    }
-//
-//                    SourceManager sourceManager = new SourceManager();
-//                    DebugContext debugContext = node.getDebug();
-//                    Path fullFilePath = sourceManager.findAndCacheSource(declaringClass, clazz, debugContext);
-//                    if(fullFilePath != null) {
-//                        Path filename = fullFilePath.getFileName();
-//                    }
-//                    if (lineNumberTable != null) {
-//                        //System.out.println(node.toString() + " filename: " + filename + ":" + lineNumberTable.getLineNumber(bci) + "\n");
-//                        //System.out.println("line number is" + lineNumberTable.getLineNumber(bci) + "\n");
-//                    }
-//                    else{
-//                        //System.out.println("filename: " + filename + "\n");
-//                        //System.out.println("line number table is empty \n");
-//                    }
-//                }
                 if (!valueMap.containsKey(node)) {
                     ValueNode valueNode = (ValueNode) node;
                     try {
@@ -862,113 +815,10 @@ public class NodeLLVMBuilder implements NodeLIRBuilderTool, SubstrateNodeLIRBuil
 
         gen.getDebugInfoPrinter().setValueName(llvmOperand, node);
 
-        if (llvmOperand.get() instanceof LLVMValueRef) {
-            LLVMValueRef instr = llvmOperand.get();
-
-            int[] valueKinds = {LLVM.LLVMInstructionValueKind, LLVM.LLVMFunctionValueKind};
-           //if((LLVM.LLVMGetValueKind(instr) >= 0) && (LLVM.LLVMGetValueKind(instr) <= 24) ){  
-
-		if((LLVM.LLVMGetValueKind(instr) == LLVM.LLVMInstructionValueKind) || (LLVM.LLVMGetValueKind(instr) == 1) || (LLVM.LLVMGetValueKind(instr) == 5)) {
-//		if((LLVM.LLVMGetValueKind(instr) == LLVM.LLVMInstructionValueKind) || (LLVM.LLVMGetValueKind(instr) == LLVM.LLVMFunctionValueKind)) {
-		//if(Arrays.asList(valueKinds).contains(LLVM.LLVMGetValueKind(instr))) {
-            lock1.lock();
-            if(node.getNodeSourcePosition() != null){
-                    String linenumber = "";
-                    String filename = "";
-                    NodeSourcePosition position = node.getNodeSourcePosition();
-                    int bci = position.getBCI();
-                    bci = (bci > 0) ? bci : 0;
-                    ResolvedJavaMethod method = position.getMethod();
-                    LineNumberTable lineNumberTable = method.getLineNumberTable();
-                    ResolvedJavaType declaringClass = method.getDeclaringClass();
-                    Class<?> clazz = null;
-                    if (declaringClass instanceof OriginalClassProvider) {
-                        clazz = ((OriginalClassProvider) declaringClass).getJavaClass();
-                    }
-                    /*
-                     * HostedType wraps an AnalysisType and both HostedType and AnalysisType punt calls to
-                     * getSourceFilename to the wrapped class so for consistency we need to do the path
-                     * lookup relative to the doubly unwrapped HostedType or singly unwrapped AnalysisType.
-                     */
-                    if (declaringClass instanceof HostedType) {
-                        declaringClass = ((HostedType) declaringClass).getWrapped();
-                    }
-                    if (declaringClass instanceof AnalysisType) {
-                        declaringClass = ((AnalysisType) declaringClass).getWrapped();
-                    }
-
-                    SourceManager sourceManager = ImageSingletons.lookup(SourceManager.class);
-                    DebugContext debugContext = node.getDebug();
-                    int lineNum = 0;
-                    Path fullFilePath = sourceManager.findAndCacheSource(declaringClass, clazz, debugContext);
-                    if(fullFilePath != null) {
-                        filename = String.valueOf(fullFilePath.getFileName());
-                    }
-                    if (lineNumberTable != null) {
-                        lineNum = lineNumberTable.getLineNumber(bci);
-                        linenumber = String.valueOf(lineNum);
-                    }
-                    String dbgLoc = filename + ":" + linenumber;
-                    String producer = "Graal Compiler";
-                    String randType = "rand";
-                    String directory = String.valueOf(fullFilePath);
-                    LLVMMetadataRef compileUnit = null;
-                    LLVMMetadataRef diLocation = null;
-                    //TODO: Remove these later
-                    LLVMMetadataRef SP = null;
-                    String funcName = method.toString();
-                    String key = filename + funcName;
-                    //-----------------------------
-                    if (builder.filenameToCU.containsKey(filename)){
-                       compileUnit = builder.filenameToCU.get(filename);
-                        //SP = builder.filenameToCU.get(key);
-                    }
-                    else {
-                        LLVMMetadataRef diFile = LLVM.LLVMDIBuilderCreateFile(builder.diBuilder, filename, filename.length(), directory, directory.length());
-                        compileUnit = LLVM.LLVMDIBuilderCreateCompileUnit(builder.diBuilder, LLVM.LLVMDWARFSourceLanguageJava, diFile, producer, producer.length(),
-                                0, "", 0, 0, "xy", 2, LLVM.LLVMDWARFEmissionFull,
-                                0, 1, 1, "", 0, "", 0);
-
-                        LLVMMetadataRef FContext = diFile;
-                        //LLVMValueRef mainFunc = LLVM.LLVMGetNamedFunction(builder.getModule(), "main");
-                        //String funcName = "main";
-                        String typeName = "void";
-                        LLVMMetadataRef[] paramType = {LLVM.LLVMDIBuilderCreateBasicType(builder.diBuilder, typeName,
-                        typeName.length(), 32,4, 0)};
-                        PointerPointer<LLVMMetadataRef> paramTypeP = new PointerPointer<LLVMMetadataRef>(paramType);
-                        //LLVMMetadataRef arrType = LLVM.LLVMDIBuilderGetOrCreateTypeArray(builder.diBuilder, paramTypeP, 1);
-                        LLVMMetadataRef DTy = LLVM.LLVMDIBuilderCreateSubroutineType(builder.diBuilder,
-                                diFile, paramTypeP, 1, 0);
-                        //TODO: Get the correct function and scope line num
-                        SP = LLVM.LLVMDIBuilderCreateFunction(
-                                builder.diBuilder, FContext, funcName, funcName.length(), funcName, funcName.length(),
-                                diFile, 0,//Func Line
-                                 DTy, 0, 1,
-                                3, // Scope Line
-                                0, 0);
-                        //LLVM.LLVMSetSubprogram(mainFunc, SP);
-                        //diLocation = LLVM.LLVMDIBuilderCreateDebugLocation(builder.getContext(), 3, 3, SP, null);
-
-                        //builder.filenameToCU.put(filename, compileUnit);
-                        builder.filenameToCU.put(key, filename);
-
-                    }
-                    diLocation = LLVM.LLVMDIBuilderCreateDebugLocation(builder.getContext(), lineNum, 0, SP, null);
-                    assert (compileUnit != null);
-                    //TODO: Replace the line and column with non-constants
-                    assert (diLocation != null);
-                    //LLVMValueRef mdString = builder.testString(builder.constantString(dbgLoc));
-                    //LLVMMetadataRef mdString = builder.testString2(builder.mdString(dbgLoc));
-                    //builder.setMetadata(instr, "dbgline", mdString);
-                    //if (LLVM.LLVMIsAAllocaInst(instr) != null) {
-                        //System.out.println("got here!");
-                        //LLVMMetadataRef D = LLVM.LLVMDIBuilderCreateUnspecifiedType(builder.diBuilder, randType, randType.length());
-                        //LLVM.LLVMDIBuilderInsertDeclareBefore(builder.diBuilder, instr, D,
-                        //        LLVM.LLVMDIBuilderCreateConstantValueExpression(builder.diBuilder, 7), diLocation, instr);
-                    LLVM.LLVMSetCurrentDebugLocation2(builder.getBuilderRef(), diLocation);
-                    LLVM.LLVMSetInstDebugLocation(builder.getBuilderRef(), instr);
-                }
-            lock1.unlock();
+        if(gen.getSrcDebugInfo()) {
+            if (llvmOperand.get() instanceof LLVMValueRef) {
+                LLVMValueRef instr = llvmOperand.get();
+                builder.buildDebugInfoForInstr(node, instr);
             }
         }
 
