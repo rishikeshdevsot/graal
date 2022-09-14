@@ -30,25 +30,13 @@ import static com.oracle.svm.core.graal.llvm.util.LLVMUtils.dumpTypes;
 import static com.oracle.svm.core.graal.llvm.util.LLVMUtils.dumpValues;
 import static org.graalvm.compiler.debug.GraalError.shouldNotReachHere;
 
-import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-import com.oracle.graal.pointsto.infrastructure.OriginalClassProvider;
-import com.oracle.graal.pointsto.meta.AnalysisType;
-import com.oracle.svm.hosted.annotation.CustomSubstitutionMethod;
-import com.oracle.svm.hosted.image.sources.SourceManager;
-import com.oracle.svm.hosted.meta.HostedType;
-import com.oracle.svm.hosted.substitute.SubstitutionMethod;
-import com.oracle.svm.shadowed.org.bytedeco.javacpp.annotation.Cast;
 import com.oracle.svm.shadowed.org.bytedeco.llvm.LLVM.LLVMDIBuilderRef;
 import com.oracle.svm.shadowed.org.bytedeco.llvm.LLVM.LLVMMetadataRef;
-import jdk.nashorn.internal.runtime.Debug;
-import jdk.vm.ci.meta.LineNumberTable;
-import jdk.vm.ci.meta.ResolvedJavaMethod;
-import jdk.vm.ci.meta.ResolvedJavaType;
 import org.graalvm.compiler.core.common.NumUtil;
 import org.graalvm.compiler.core.common.calc.Condition;
 
@@ -68,7 +56,6 @@ import com.oracle.svm.shadowed.org.bytedeco.llvm.global.LLVM;
 import org.graalvm.compiler.debug.DebugContext;
 import org.graalvm.compiler.graph.NodeSourcePosition;
 import org.graalvm.compiler.nodes.ValueNode;
-import org.graalvm.nativeimage.ImageSingletons;
 
 public class LLVMIRBuilder implements AutoCloseable {
     private static final String DEFAULT_INSTR_NAME = "";
@@ -78,8 +65,8 @@ public class LLVMIRBuilder implements AutoCloseable {
     public LLVMDIBuilderRef diBuilder;
     private LLVMModuleRef module;
     private LLVMValueRef function;
-    public HashMap<String, LLVMMetadataRef> filenameToCU;
-    public  HashMap<String, LLVMMetadataRef> functionToSP;
+    public HashMap<String, LLVMMetadataRef> diFilenameToCU;
+    public  HashMap<String, LLVMMetadataRef> diFunctionToSP;
     private boolean primary;
     private LLVMHelperFunctions helpers;
 
@@ -87,14 +74,15 @@ public class LLVMIRBuilder implements AutoCloseable {
         this.context = LLVM.LLVMContextCreate();
         this.builder = LLVM.LLVMCreateBuilderInContext(context);
         this.module = LLVM.LLVMModuleCreateWithNameInContext(name, context);
-        String dwarf_flag = "Dwarf Version";
-        String dbginfo_flag = "Debug Info Version";
-        //LLVM.LLVMAddModuleFlag(this.module, LLVM.LLVMModuleFlagBehaviorWarning, dwarf_flag, dwarf_flag.length(), mdString("v3"));
-        LLVMValueRef dbgInfo_val = LLVM.LLVMConstInt(LLVM.LLVMInt32TypeInContext(context), LLVM.LLVMDebugMetadataVersion(), 0);
-        LLVM.LLVMAddModuleFlag(this.module, LLVM.LLVMModuleFlagBehaviorWarning, dbginfo_flag, dbginfo_flag.length(), LLVM.LLVMValueAsMetadata(dbgInfo_val));
-        this.diBuilder = LLVM.LLVMCreateDIBuilder(this.module);
-        filenameToCU = new HashMap<String, LLVMMetadataRef>();
-        functionToSP = new HashMap<String, LLVMMetadataRef>();
+        if (LLVMOptions.IncludeLLVMSourceDebugInfo.getValue()) {
+            String dbgInfoFlagName = "Debug Info Version";
+            LLVMValueRef dbgInfoVal = LLVM.LLVMConstInt(LLVM.LLVMInt32TypeInContext(context), LLVM.LLVMDebugMetadataVersion(), 0);
+            LLVM.LLVMAddModuleFlag(this.module, LLVM.LLVMModuleFlagBehaviorWarning, dbgInfoFlagName,
+                    dbgInfoFlagName.length(), LLVM.LLVMValueAsMetadata(dbgInfoVal));
+            this.diBuilder = LLVM.LLVMCreateDIBuilder(this.module);
+            diFilenameToCU = new HashMap<String, LLVMMetadataRef>();
+            diFunctionToSP = new HashMap<String, LLVMMetadataRef>();
+        }
         this.primary = true;
         this.helpers = new LLVMHelperFunctions(this);
     }
@@ -103,8 +91,11 @@ public class LLVMIRBuilder implements AutoCloseable {
         this.context = primary.context;
         this.builder = LLVM.LLVMCreateBuilderInContext(context);
         this.module = primary.module;
-        this.diBuilder = LLVM.LLVMCreateDIBuilder(this.module);
-        filenameToCU = new HashMap<String, LLVMMetadataRef>();
+        if (LLVMOptions.IncludeLLVMSourceDebugInfo.getValue()) {
+            this.diBuilder = LLVM.LLVMCreateDIBuilder(this.module);
+            diFilenameToCU = new HashMap<String, LLVMMetadataRef>();
+            diFunctionToSP = new HashMap<String, LLVMMetadataRef>();
+        }
         this.function = null;
         this.primary = false;
         this.helpers = null;
@@ -134,7 +125,6 @@ public class LLVMIRBuilder implements AutoCloseable {
     public LLVMBuilderRef getBuilderRef() {
         return this.builder;
     }
-    public LLVMContextRef getContext() { return this.context; }
 
     public boolean verifyBitcode() {
         if (LLVM.LLVMVerifyModule(module, LLVM.LLVMPrintMessageAction, new BytePointer((Pointer) null)) == TRUE) {
@@ -148,9 +138,12 @@ public class LLVMIRBuilder implements AutoCloseable {
     public void close() {
         LLVM.LLVMDisposeBuilder(builder);
         builder = null;
-        LLVM.LLVMDIBuilderFinalize(diBuilder);
-        filenameToCU.clear();
-        diBuilder = null;
+        if (LLVMOptions.IncludeLLVMSourceDebugInfo.getValue()) {
+            LLVM.LLVMDIBuilderFinalize(diBuilder);
+            diFilenameToCU.clear();
+            diFunctionToSP.clear();
+            diBuilder = null;
+        }
         if (primary) {
             LLVM.LLVMDisposeModule(module);
             module = null;
@@ -828,54 +821,18 @@ public class LLVMIRBuilder implements AutoCloseable {
         buildIntrinsicCall("llvm.debugtrap", functionType(voidType()));
     }
 
-    @SuppressWarnings("try")
-    private Path computeFullFilePath(ResolvedJavaMethod method, DebugContext debugContext) {
-        Path fullFilePath;
-        ResolvedJavaType declaringClass = method.getDeclaringClass();
-        Class<?> clazz = null;
-        if (declaringClass instanceof OriginalClassProvider) {
-            clazz = ((OriginalClassProvider) declaringClass).getJavaClass();
-        }
-        /*
-         * HostedType wraps an AnalysisType and both HostedType and AnalysisType punt calls to
-         * getSourceFilename to the wrapped class so for consistency we need to do the path
-         * lookup relative to the doubly unwrapped HostedType or singly unwrapped AnalysisType.
-         */
-        if (declaringClass instanceof HostedType) {
-            declaringClass = ((HostedType) declaringClass).getWrapped();
-        }
-        if (declaringClass instanceof AnalysisType) {
-            declaringClass = ((AnalysisType) declaringClass).getWrapped();
-        }
-        SourceManager sourceManager = ImageSingletons.lookup(SourceManager.class);
-        try (DebugContext.Scope s = debugContext.scope("DebugCodeInfo", declaringClass)) {
-            fullFilePath = sourceManager.findAndCacheSource(declaringClass, clazz, debugContext);
-        } catch (Throwable e) {
-            throw debugContext.handle(e);
-        }
-        return fullFilePath;
-    }
-
-    private int line(ResolvedJavaMethod method, int bci) {
-        LineNumberTable lineNumberTable = method.getLineNumberTable();
-        if (lineNumberTable != null) {
-            return lineNumberTable.getLineNumber(bci);
-        }
-        return -1;
-    }
-
     private LLVMMetadataRef getCompileUnit(String filename, LLVMMetadataRef diFile){
         final String producer = "Graal Compiler";
         LLVMMetadataRef compileUnit;
-        if (filenameToCU.containsKey(filename)) {
-            compileUnit = filenameToCU.get(filename);
+        if (diFilenameToCU.containsKey(filename)) {
+            compileUnit = diFilenameToCU.get(filename);
         } else {
             compileUnit = LLVM.LLVMDIBuilderCreateCompileUnit(diBuilder, LLVM.LLVMDWARFSourceLanguageJava, diFile, producer, producer.length(),
                     0, "", 0, 0, "xy", 2, LLVM.LLVMDWARFEmissionFull,
                     0, 1, 1, "", 0, "", 0);
 
 
-            filenameToCU.put(filename, compileUnit);
+            diFilenameToCU.put(filename, compileUnit);
 
         }
         return compileUnit;
@@ -884,26 +841,25 @@ public class LLVMIRBuilder implements AutoCloseable {
     private LLVMMetadataRef getSubProgram(String filename, String funcName, LLVMMetadataRef diFile){
         String key = filename + ":" + funcName;
         LLVMMetadataRef subProgram;
-        if (functionToSP.containsKey(key)) {
-            subProgram = functionToSP.get(key);
+        if (diFunctionToSP.containsKey(key)) {
+            subProgram = diFunctionToSP.get(key);
         } else {
-            LLVMMetadataRef FContext = diFile;
-            //TODO: Create the correct function type, currently all functions are of `void` return types
+            //TODO: Create the correct function type, currently all functions are treated as "void" (DWARF type float: 0x4) return types with no paramenters
             String typeName = "void";
             LLVMMetadataRef[] paramType = {LLVM.LLVMDIBuilderCreateBasicType(diBuilder, typeName,
                     typeName.length(), 32, 4, 0)};
             PointerPointer<LLVMMetadataRef> paramTypeP = new PointerPointer<LLVMMetadataRef>(paramType);
 
-            LLVMMetadataRef DTy = LLVM.LLVMDIBuilderCreateSubroutineType(diBuilder,
+            LLVMMetadataRef spType = LLVM.LLVMDIBuilderCreateSubroutineType(diBuilder,
                     diFile, paramTypeP, 1, 0);
-            //TODO: Get the function and scope line num
+            //TODO: Get the function and scope line num if possible
             subProgram = LLVM.LLVMDIBuilderCreateFunction(
-                    diBuilder, FContext, funcName, funcName.length(), funcName, funcName.length(),
+                    diBuilder, diFile, funcName, funcName.length(), funcName, funcName.length(),
                     diFile, 0,//Func Line
-                    DTy, 0, 1,
+                    spType, 0, 1,
                     0, // Scope Line
                     0, 0);
-            functionToSP.put(key, subProgram);
+            diFunctionToSP.put(key, subProgram);
         }
         return subProgram;
     }
@@ -914,30 +870,24 @@ public class LLVMIRBuilder implements AutoCloseable {
                 || (LLVM.LLVMGetValueKind(instr) == LLVM.LLVMFunctionValueKind)) {
             if (node.getNodeSourcePosition() != null) {
                 NodeSourcePosition position = node.getNodeSourcePosition();
-                int bci = position.getBCI();
-                bci = (bci > 0) ? bci : 0;
-                ResolvedJavaMethod method = position.getMethod();
                 DebugContext debugContext = node.getDebug();
-                Path fullFilePath = computeFullFilePath(method, debugContext);
-                int lineNum = line(method, bci);
+                LLVMDebugLineInfo dbgLineInfo = new LLVMDebugLineInfo(debugContext, position);
+                int lineNum = dbgLineInfo.line();
+                dbgLineInfo.computeFullFilePath();
+                String filename = dbgLineInfo.fileName();
 
-                String filename = "";
-                if (fullFilePath != null) {
-                    filename = String.valueOf(fullFilePath.getFileName());
+                if (filename != null) {
+                    String directory = String.valueOf(dbgLineInfo.filePath());
+                    String funcName = dbgLineInfo.methodName();
+
+                    LLVMMetadataRef diFile = LLVM.LLVMDIBuilderCreateFile(diBuilder, filename, filename.length(), directory, directory.length());
+                    getCompileUnit(filename, diFile);
+                    LLVMMetadataRef subProgram = getSubProgram(filename, funcName, diFile);
+
+                    LLVMMetadataRef diLocation = LLVM.LLVMDIBuilderCreateDebugLocation(context, lineNum, 0, subProgram, null);
+                    LLVM.LLVMSetCurrentDebugLocation2(builder, diLocation);
+                    LLVM.LLVMSetInstDebugLocation(builder, instr);
                 }
-
-                String directory = String.valueOf(fullFilePath);
-                String funcName = method.getName();
-
-                LLVMMetadataRef diFile = LLVM.LLVMDIBuilderCreateFile(diBuilder, filename, filename.length(), directory, directory.length());
-
-                getCompileUnit(filename, diFile);
-
-                LLVMMetadataRef subProgram = getSubProgram(filename, funcName, diFile);
-
-                LLVMMetadataRef diLocation = LLVM.LLVMDIBuilderCreateDebugLocation(context, lineNum, 0, subProgram, null);
-                LLVM.LLVMSetCurrentDebugLocation2(builder, diLocation);
-                LLVM.LLVMSetInstDebugLocation(builder, instr);
             }
         }
     }

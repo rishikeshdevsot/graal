@@ -28,7 +28,6 @@ import static com.oracle.svm.core.util.VMError.unimplemented;
 
 import java.util.Collections;
 import java.util.List;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.concurrent.locks.ReentrantLock;
 
 import com.oracle.svm.hosted.image.sources.SourceManager;
@@ -87,7 +86,7 @@ public class SubstrateLLVMBackend extends SubstrateBackend {
         CompilationResult result = new CompilationResult(identifier);
         result.setMethods(method, Collections.emptySet());
 
-        LLVMGenerator generator = new LLVMGenerator(getProviders(), result, method, 0, false);
+        LLVMGenerator generator = new LLVMGenerator(getProviders(), result, method, 0);
         generator.createJNITrampoline(threadArg, threadIsolateOffset, methodIdArg, methodObjEntryPointOffset);
         byte[] bitcode = generator.getBitcode();
         result.setTargetCode(bitcode, bitcode.length);
@@ -122,12 +121,11 @@ public class SubstrateLLVMBackend extends SubstrateBackend {
             assert !graph.hasValueProxies();
 
             ResolvedJavaMethod method = graph.method();
-            LLVMGenerator generator = new LLVMGenerator(getProviders(), result, method, LLVMOptions.IncludeLLVMDebugInfo.getValue(),
-                    LLVMOptions.IncludeLLVMSourceDebugInfo.getValue());
+            LLVMGenerator generator = new LLVMGenerator(getProviders(), result, method, LLVMOptions.IncludeLLVMDebugInfo.getValue());
             NodeLLVMBuilder nodeBuilder = newNodeLLVMBuilder(graph, generator);
 
             /* LLVM generation */
-            if(nodeBuilder.getLIRGeneratorTool().getSrcDebugInfo()) {
+            if (LLVMOptions.IncludeLLVMSourceDebugInfo.getValue()) {
                 imageSingletonesLock.lock();
                 if (ImageSingletons.contains(SourceManager.class) == false) {
                     ImageSingletons.add(SourceManager.class, new SourceManager());

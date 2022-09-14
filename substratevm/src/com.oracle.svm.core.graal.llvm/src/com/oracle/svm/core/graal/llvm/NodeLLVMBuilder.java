@@ -24,7 +24,6 @@
  */
 package com.oracle.svm.core.graal.llvm;
 
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -34,8 +33,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.locks.ReentrantLock;
 
-import com.oracle.svm.shadowed.org.bytedeco.javacpp.PointerPointer;
-import com.oracle.svm.shadowed.org.bytedeco.llvm.LLVM.LLVMMetadataRef;
+
 import org.graalvm.compiler.code.CompilationResult;
 import org.graalvm.compiler.core.common.NumUtil;
 import org.graalvm.compiler.core.common.calc.Condition;
@@ -51,7 +49,6 @@ import static org.graalvm.compiler.debug.GraalError.unimplemented;
 import org.graalvm.compiler.graph.GraalGraphError;
 import org.graalvm.compiler.graph.Node;
 import org.graalvm.compiler.graph.NodeInputList;
-import org.graalvm.compiler.graph.NodeSourcePosition;
 import org.graalvm.compiler.graph.iterators.NodeIterable;
 import org.graalvm.compiler.lir.ConstantValue;
 import org.graalvm.compiler.lir.LIRFrameState;
@@ -91,8 +88,7 @@ import org.graalvm.compiler.nodes.java.TypeSwitchNode;
 import org.graalvm.compiler.nodes.spi.LIRLowerable;
 import org.graalvm.compiler.nodes.spi.NodeLIRBuilderTool;
 
-import com.oracle.graal.pointsto.infrastructure.OriginalClassProvider;
-import com.oracle.graal.pointsto.meta.AnalysisType;
+
 import com.oracle.svm.core.SubstrateOptions;
 import com.oracle.svm.core.graal.code.CGlobalDataInfo;
 import com.oracle.svm.core.graal.code.CGlobalDataReference;
@@ -116,8 +112,6 @@ import com.oracle.svm.core.nodes.SafepointCheckNode;
 import com.oracle.svm.core.thread.Safepoint;
 import com.oracle.svm.core.thread.ThreadingSupportImpl;
 import com.oracle.svm.core.thread.VMThreads;
-import com.oracle.svm.hosted.image.sources.SourceManager;
-import com.oracle.svm.hosted.meta.HostedType;
 import com.oracle.svm.shadowed.org.bytedeco.llvm.LLVM.LLVMBasicBlockRef;
 import com.oracle.svm.shadowed.org.bytedeco.llvm.LLVM.LLVMTypeRef;
 import com.oracle.svm.shadowed.org.bytedeco.llvm.LLVM.LLVMValueRef;
@@ -130,11 +124,8 @@ import jdk.vm.ci.code.RegisterValue;
 import jdk.vm.ci.code.site.InfopointReason;
 import jdk.vm.ci.meta.Assumptions;
 import jdk.vm.ci.meta.JavaConstant;
-import jdk.vm.ci.meta.LineNumberTable;
 import jdk.vm.ci.meta.ResolvedJavaMethod;
-import jdk.vm.ci.meta.ResolvedJavaType;
 import jdk.vm.ci.meta.Value;
-import org.graalvm.nativeimage.ImageSingletons;
 
 public class NodeLLVMBuilder implements NodeLIRBuilderTool, SubstrateNodeLIRBuilder {
     private final LLVMGenerator gen;
@@ -815,7 +806,7 @@ public class NodeLLVMBuilder implements NodeLIRBuilderTool, SubstrateNodeLIRBuil
 
         gen.getDebugInfoPrinter().setValueName(llvmOperand, node);
 
-        if(gen.getSrcDebugInfo()) {
+        if (LLVMOptions.IncludeLLVMSourceDebugInfo.getValue()) {
             if (llvmOperand.get() instanceof LLVMValueRef) {
                 LLVMValueRef instr = llvmOperand.get();
                 builder.buildDebugInfoForInstr(node, instr);

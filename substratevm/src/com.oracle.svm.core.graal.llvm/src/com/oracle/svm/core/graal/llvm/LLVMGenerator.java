@@ -45,14 +45,6 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiFunction;
 
-import com.oracle.graal.pointsto.infrastructure.OriginalClassProvider;
-import com.oracle.graal.pointsto.meta.AnalysisType;
-import com.oracle.svm.hosted.image.sources.SourceManager;
-import com.oracle.svm.shadowed.org.bytedeco.javacpp.annotation.Cast;
-import com.oracle.svm.shadowed.org.bytedeco.llvm.LLVM.LLVMContextRef;
-import com.oracle.svm.shadowed.org.bytedeco.llvm.LLVM.LLVMMetadataRef;
-import com.oracle.svm.shadowed.org.bytedeco.llvm.global.LLVM;
-import jdk.vm.ci.meta.LineNumberTable;
 import org.graalvm.compiler.code.CompilationResult;
 import org.graalvm.compiler.core.common.CompressEncoding;
 import org.graalvm.compiler.core.common.LIRKind;
@@ -68,9 +60,7 @@ import org.graalvm.compiler.core.common.spi.LIRKindTool;
 import org.graalvm.compiler.core.common.type.RawPointerStamp;
 import org.graalvm.compiler.core.common.type.Stamp;
 import org.graalvm.compiler.core.common.type.StampFactory;
-import org.graalvm.compiler.debug.DebugContext;
 import org.graalvm.compiler.graph.Node;
-import org.graalvm.compiler.graph.NodeSourcePosition;
 import org.graalvm.compiler.lir.LIRFrameState;
 import org.graalvm.compiler.lir.LIRInstruction;
 import org.graalvm.compiler.lir.LabelRef;
@@ -175,7 +165,6 @@ public class LLVMGenerator implements LIRGeneratorTool, SubstrateLIRGenerator {
     private final boolean canModifySpecialRegisters;
     private final boolean returnsEnum;
     private final boolean returnsCEnum;
-    private final boolean sourceDbgInfo;
 
     private Block currentBlock;
     private final Map<AbstractBeginNode, LLVMBasicBlockRef> basicBlockMap = new HashMap<>();
@@ -187,7 +176,7 @@ public class LLVMGenerator implements LIRGeneratorTool, SubstrateLIRGenerator {
     private final LLVMValueRef[] stackSlots = new LLVMValueRef[SpecialRegister.count()];
     private final Map<Constant, String> constants = new HashMap<>();
 
-    LLVMGenerator(Providers providers, CompilationResult result, ResolvedJavaMethod method, int debugLevel, boolean sourceDbgInfo) {
+    LLVMGenerator(Providers providers, CompilationResult result, ResolvedJavaMethod method, int debugLevel) {
         this.providers = providers;
         this.compilationResult = result;
         this.builder = new LLVMIRBuilder(method.format("%H.%n"));
@@ -198,7 +187,6 @@ public class LLVMGenerator implements LIRGeneratorTool, SubstrateLIRGenerator {
         this.functionName = SubstrateUtil.uniqueShortName(method);
         this.isEntryPoint = isEntryPoint(method);
         this.canModifySpecialRegisters = canModifySpecialRegisters(method);
-        this.sourceDbgInfo = sourceDbgInfo;
 
         ResolvedJavaType returnType = method.getSignature().getReturnType(null).resolve(null);
         this.returnsEnum = returnType.isEnum();
@@ -253,8 +241,6 @@ public class LLVMGenerator implements LIRGeneratorTool, SubstrateLIRGenerator {
     DebugInfoPrinter getDebugInfoPrinter() {
         return debugInfoPrinter;
     }
-
-    boolean getSrcDebugInfo() { return sourceDbgInfo; }
 
     /* Function */
 
@@ -1859,48 +1845,6 @@ public class LLVMGenerator implements LIRGeneratorTool, SubstrateLIRGenerator {
         void printNode(ValueNode valueNode) {
             if (debugLevel >= DebugLevel.Node.level) {
                 Node node = valueNode;
-                NodeSourcePosition position = node.getNodeSourcePosition();
-                if (position == null){
-                    emitPrintf(valueNode.toString());
-                    return;
-                }
-                //System.out.println("Control reaches here\n");
-                int bci = position.getBCI();
-                bci = (bci > 0) ? bci : 0;
-                ResolvedJavaMethod method = position.getMethod();
-                LineNumberTable lineNumberTable = method.getLineNumberTable();
-                ResolvedJavaType declaringClass = method.getDeclaringClass();
-
-                // Printing the source
-                Class<?> clazz = null;
-                if (declaringClass instanceof OriginalClassProvider) {
-                    clazz = ((OriginalClassProvider) declaringClass).getJavaClass();
-                }
-                /*
-                 * HostedType wraps an AnalysisType and both HostedType and AnalysisType punt calls to
-                 * getSourceFilename to the wrapped class so for consistency we need to do the path
-                 * lookup relative to the doubly unwrapped HostedType or singly unwrapped AnalysisType.
-                 */
-                if (declaringClass instanceof HostedType) {
-                    declaringClass = ((HostedType) declaringClass).getWrapped();
-                }
-                if (declaringClass instanceof AnalysisType) {
-                    declaringClass = ((AnalysisType) declaringClass).getWrapped();
-                }
-                SourceManager sourceManager = new SourceManager();
-                DebugContext debugContext = node.getDebug();
-                Path fullFilePath = sourceManager.findAndCacheSource(declaringClass, clazz, debugContext);
-                String filePathString = "filename = ";
-                if(fullFilePath != null) {
-                    Path filename = fullFilePath.getFileName();
-                    filePathString = filePathString + filename;
-                }
-                if(lineNumberTable != null) {
-                    emitPrintf(valueNode.toString() + " " + filePathString + " : " + String.valueOf(lineNumberTable.getLineNumber(bci)));
-                }
-                else{
-                    emitPrintf(valueNode.toString() + " " + filePathString + " : " + "lineNumberTable empty");
-                }
             }
         }
 
