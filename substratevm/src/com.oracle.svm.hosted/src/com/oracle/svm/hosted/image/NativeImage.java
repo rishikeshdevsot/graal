@@ -452,7 +452,6 @@ public abstract class NativeImage extends AbstractImage {
             if (SubstrateOptions.GenerateDebugInfo.getValue(HostedOptionValues.singleton()) > 0) {
                 try (Timer.StopTimer t = new Timer(imageName, "dbginfo").start()) {
                     if (ImageSingletons.contains(SourceManager.class) == false) {
-                        System.out.println("Does not contain, adding in NativeImage");
                         ImageSingletons.add(SourceManager.class, new SourceManager());
                     }
                     DebugInfoProvider provider = new NativeImageDebugInfoProvider(debug, codeCache, heap);
