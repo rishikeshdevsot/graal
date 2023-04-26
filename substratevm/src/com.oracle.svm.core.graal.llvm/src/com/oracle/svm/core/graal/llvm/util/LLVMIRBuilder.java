@@ -91,11 +91,7 @@ public class LLVMIRBuilder implements AutoCloseable {
         this.context = primary.context;
         this.builder = LLVM.LLVMCreateBuilderInContext(context);
         this.module = primary.module;
-        if (LLVMOptions.IncludeLLVMSourceDebugInfo.getValue()) {
-            this.diBuilder = LLVM.LLVMCreateDIBuilder(this.module);
-            diFilenameToCU = new HashMap<String, LLVMMetadataRef>();
-            diFunctionToSP = new HashMap<String, LLVMMetadataRef>();
-        }
+
         this.function = null;
         this.primary = false;
         this.helpers = null;
@@ -138,13 +134,13 @@ public class LLVMIRBuilder implements AutoCloseable {
     public void close() {
         LLVM.LLVMDisposeBuilder(builder);
         builder = null;
-        if (LLVMOptions.IncludeLLVMSourceDebugInfo.getValue()) {
-            LLVM.LLVMDIBuilderFinalize(diBuilder);
-            diFilenameToCU.clear();
-            diFunctionToSP.clear();
-            diBuilder = null;
-        }
         if (primary) {
+            if (LLVMOptions.IncludeLLVMSourceDebugInfo.getValue()) {
+                LLVM.LLVMDIBuilderFinalize(diBuilder);
+                diFilenameToCU.clear();
+                diFunctionToSP.clear();
+                diBuilder = null;
+            }
             LLVM.LLVMDisposeModule(module);
             module = null;
             LLVM.LLVMContextDispose(context);
