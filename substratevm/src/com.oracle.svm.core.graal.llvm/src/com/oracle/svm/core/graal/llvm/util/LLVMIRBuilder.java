@@ -868,6 +868,7 @@ public class LLVMIRBuilder implements AutoCloseable {
                 NodeSourcePosition position = node.getNodeSourcePosition();
                 DebugContext debugContext = node.getDebug();
                 LLVMDebugLineInfo dbgLineInfo = new LLVMDebugLineInfo(debugContext, position);
+                int bci = position.getBCI();
                 int lineNum = dbgLineInfo.line();
                 dbgLineInfo.computeFullFilePath();
                 String filename = dbgLineInfo.fileName();
@@ -880,13 +881,23 @@ public class LLVMIRBuilder implements AutoCloseable {
                     getCompileUnit(filename, diFile);
                     LLVMMetadataRef subProgram = getSubProgram(filename, funcName, diFile);
 
-                    LLVMMetadataRef diLocation = LLVM.LLVMDIBuilderCreateDebugLocation(context, lineNum, 0, subProgram, null);
+                    //LLVMMetadataRef diLocation = LLVM.LLVMDIBuilderCreateDebugLocation(context, lineNum, 0, subProgram, null);
+                    LLVMMetadataRef diLocation = LLVM.LLVMDIBuilderCreateDebugLocation(context, lineNum, bci, subProgram, null);
                     LLVM.LLVMSetCurrentDebugLocation2(builder, diLocation);
                     LLVM.LLVMSetInstDebugLocation(builder, instr);
                 }
+                setBciMetadata(instr, bci);
+
             }
         }
     }
+
+    public void setBciMetadata(LLVMValueRef instr, int bci) {
+        LLVMMetadataRef bciNode = LLVM.LLVMMDStringInContext2(context, String.valueOf(bci), String.valueOf(bci).length());
+        String kindID = "bci";
+        setMetadata(instr, kindID, LLVM.LLVMMetadataAsValue(context, bciNode));
+    }
+
     public LLVMValueRef functionEntryCount(LLVMValueRef count) {
         String functionEntryCountName = "function_entry_count";
         LLVMValueRef[] values = new LLVMValueRef[2];
