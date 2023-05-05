@@ -24,19 +24,6 @@
  */
 package com.oracle.svm.core.graal.llvm;
 
-import static com.oracle.svm.core.graal.llvm.util.LLVMIRBuilder.typeOf;
-import static com.oracle.svm.core.graal.llvm.util.LLVMUtils.dumpTypes;
-import static com.oracle.svm.core.graal.llvm.util.LLVMUtils.dumpValues;
-import static com.oracle.svm.core.graal.llvm.util.LLVMUtils.getType;
-import static com.oracle.svm.core.graal.llvm.util.LLVMUtils.getVal;
-import static jdk.vm.ci.code.MemoryBarriers.JMM_POST_VOLATILE_READ;
-import static jdk.vm.ci.code.MemoryBarriers.JMM_POST_VOLATILE_WRITE;
-import static jdk.vm.ci.code.MemoryBarriers.JMM_PRE_VOLATILE_READ;
-import static jdk.vm.ci.code.MemoryBarriers.JMM_PRE_VOLATILE_WRITE;
-import static org.graalvm.compiler.debug.GraalError.shouldNotReachHere;
-import static org.graalvm.compiler.debug.GraalError.unimplemented;
-
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -60,6 +47,8 @@ import org.graalvm.compiler.core.common.spi.LIRKindTool;
 import org.graalvm.compiler.core.common.type.RawPointerStamp;
 import org.graalvm.compiler.core.common.type.Stamp;
 import org.graalvm.compiler.core.common.type.StampFactory;
+import static org.graalvm.compiler.debug.GraalError.shouldNotReachHere;
+import static org.graalvm.compiler.debug.GraalError.unimplemented;
 import org.graalvm.compiler.graph.Node;
 import org.graalvm.compiler.lir.LIRFrameState;
 import org.graalvm.compiler.lir.LIRInstruction;
@@ -102,6 +91,7 @@ import com.oracle.svm.core.graal.llvm.util.LLVMIRBuilder.InlineAssemblyConstrain
 import com.oracle.svm.core.graal.llvm.util.LLVMIRBuilder.InlineAssemblyConstraint.Location;
 import com.oracle.svm.core.graal.llvm.util.LLVMIRBuilder.InlineAssemblyConstraint.Type;
 import com.oracle.svm.core.graal.llvm.util.LLVMIRBuilder.LinkageType;
+import static com.oracle.svm.core.graal.llvm.util.LLVMIRBuilder.typeOf;
 import com.oracle.svm.core.graal.llvm.util.LLVMOptions;
 import com.oracle.svm.core.graal.llvm.util.LLVMStackMapInfo;
 import com.oracle.svm.core.graal.llvm.util.LLVMTargetSpecific;
@@ -112,6 +102,10 @@ import com.oracle.svm.core.graal.llvm.util.LLVMUtils.LLVMPendingSpecialRegisterR
 import com.oracle.svm.core.graal.llvm.util.LLVMUtils.LLVMStackSlot;
 import com.oracle.svm.core.graal.llvm.util.LLVMUtils.LLVMValueWrapper;
 import com.oracle.svm.core.graal.llvm.util.LLVMUtils.LLVMVariable;
+import static com.oracle.svm.core.graal.llvm.util.LLVMUtils.dumpTypes;
+import static com.oracle.svm.core.graal.llvm.util.LLVMUtils.dumpValues;
+import static com.oracle.svm.core.graal.llvm.util.LLVMUtils.getType;
+import static com.oracle.svm.core.graal.llvm.util.LLVMUtils.getVal;
 import com.oracle.svm.core.graal.meta.SubstrateRegisterConfig;
 import com.oracle.svm.core.graal.snippets.CEntryPointSnippets;
 import com.oracle.svm.core.heap.ReferenceAccess;
@@ -128,6 +122,10 @@ import com.oracle.svm.shadowed.org.bytedeco.llvm.LLVM.LLVMValueRef;
 import jdk.vm.ci.code.CallingConvention;
 import jdk.vm.ci.code.CodeCacheProvider;
 import jdk.vm.ci.code.DebugInfo;
+import static jdk.vm.ci.code.MemoryBarriers.JMM_POST_VOLATILE_READ;
+import static jdk.vm.ci.code.MemoryBarriers.JMM_POST_VOLATILE_WRITE;
+import static jdk.vm.ci.code.MemoryBarriers.JMM_PRE_VOLATILE_READ;
+import static jdk.vm.ci.code.MemoryBarriers.JMM_PRE_VOLATILE_WRITE;
 import jdk.vm.ci.code.Register;
 import jdk.vm.ci.code.RegisterValue;
 import jdk.vm.ci.code.StackSlot;
@@ -176,7 +174,7 @@ public class LLVMGenerator implements LIRGeneratorTool, SubstrateLIRGenerator {
     private final LLVMValueRef[] stackSlots = new LLVMValueRef[SpecialRegister.count()];
     private final Map<Constant, String> constants = new HashMap<>();
 
-    LLVMGenerator(Providers providers, CompilationResult result, ResolvedJavaMethod method, int debugLevel) {
+    LLVMGenerator(Providers providers, CompilationResult result, StructuredGraph graph, ResolvedJavaMethod method, int debugLevel) {
         this.providers = providers;
         this.compilationResult = result;
         this.builder = new LLVMIRBuilder(method.format("%H.%n"));
@@ -193,6 +191,14 @@ public class LLVMGenerator implements LIRGeneratorTool, SubstrateLIRGenerator {
         this.returnsCEnum = isCEnumType(returnType);
 
         addMainFunction(method);
+
+        // Graph is null when called from createJNITrampolineMethod
+        if (graph != null) {
+            builder.setGraph(graph);
+            if (SubstrateOptions.GenerateDebugInfo.getValue() > 0) {
+                builder.setDISubProgram();
+            }
+        }
     }
 
     @Override
@@ -254,6 +260,7 @@ public class LLVMGenerator implements LIRGeneratorTool, SubstrateLIRGenerator {
 
     private void addMainFunction(ResolvedJavaMethod method) {
         builder.setMainFunction(functionName, getLLVMFunctionType(method, true));
+        builder.setMainMethod(method);
         builder.setFunctionLinkage(LinkageType.External);
         builder.setFunctionAttribute(Attribute.NoInline);
         builder.setFunctionAttribute(Attribute.NoRedZone);
@@ -288,11 +295,11 @@ public class LLVMGenerator implements LIRGeneratorTool, SubstrateLIRGenerator {
         return bitcode;
     }
 
-    private static String getFunctionName(ResolvedJavaMethod method) {
+    public static String getFunctionName(ResolvedJavaMethod method) {
         return SubstrateUtil.uniqueShortName(method);
     }
 
-    private static boolean isEntryPoint(ResolvedJavaMethod method) {
+    public static boolean isEntryPoint(ResolvedJavaMethod method) {
         return ((HostedMethod) method).isEntryPoint();
     }
 
@@ -860,14 +867,6 @@ public class LLVMGenerator implements LIRGeneratorTool, SubstrateLIRGenerator {
     LLVMValueRef buildStatepointCall(LLVMValueRef callee, boolean nativeABI, long statepointId, LLVMValueRef... args) {
         LLVMValueRef result;
         result = builder.buildCall(callee, args);
-        //LLVMValueRef mdString = builder.constantString("test1");
-//        builder.setMetadata(result, "kind1", mdString);
-
-//        String mdTest = "test1";
-//        LLVMContextRef context = LLVM.LLVMGetModuleContext(builder.getModule());
-//        LLVMMetadataRef mdString = LLVM.LLVMMDStringInContext2(context, mdTest, mdTest.length());
-//        LLVMMetadataRef MD = LLVM.LLVMMDNodeInContext2(context, mdString, mdTest.length());
-//        LLVM.LLVMGlobalSetMetadata(result, 9, MD);
 
 
         builder.setCallSiteAttribute(result, Attribute.StatepointID, Long.toString(statepointId));
@@ -876,7 +875,12 @@ public class LLVMGenerator implements LIRGeneratorTool, SubstrateLIRGenerator {
             for (SpecialRegister reg : SpecialRegister.registers()) {
                 setSpecialRegisterValue(reg, builder.buildExtractValue(result, reg.index));
             }
+            
             int numReturnValues = LLVMIRBuilder.countElementTypes(typeOf(result));
+            // Set placeholder debug information to make llvm-link verifier pass
+            if (SubstrateOptions.GenerateDebugInfo.getValue() > 0) {
+                builder.setPlaceHolderDiLocation(result);
+            }
             return numReturnValues > SpecialRegister.count() ? builder.buildExtractValue(result, SpecialRegister.count()) : result;
         }
         return result;
@@ -910,6 +914,10 @@ public class LLVMGenerator implements LIRGeneratorTool, SubstrateLIRGenerator {
             for (SpecialRegister reg : SpecialRegister.registers()) {
                 assert reg.index < numReturnValues;
                 setSpecialRegisterValue(reg, builder.buildExtractValue(result, reg.index));
+            }
+            // Set placeholder debug information to make llvm-link verifier pass
+            if (SubstrateOptions.GenerateDebugInfo.getValue() > 0) {
+                builder.setPlaceHolderDiLocation(result);
             }
             result = numReturnValues > SpecialRegister.count() ? builder.buildExtractValue(result, SpecialRegister.count()) : result;
             builder.buildBranch(successor);
@@ -1295,7 +1303,7 @@ public class LLVMGenerator implements LIRGeneratorTool, SubstrateLIRGenerator {
             return presentCount > 0;
         }
 
-        static int count() {
+        public static int count() {
             return presentCount;
         }
 

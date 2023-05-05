@@ -305,7 +305,13 @@ public class NodeLLVMBuilder implements NodeLIRBuilderTool, SubstrateNodeLIRBuil
             }
             builder.buildBranch(gen.getBlock(block.getFirstSuccessor()));
         }
-
+        // Create function parameters if debug info is enabled.
+        if (SubstrateOptions.GenerateDebugInfo.getValue() > 0) {
+            if (block == graph.getLastSchedule().getCFG().getStartBlock()) {
+                builder.createDIFunctionParameters();
+            }
+            builder.insertLocalVarDeclarations();
+        }
         processedBlocks.add(block);
     }
 
@@ -806,7 +812,7 @@ public class NodeLLVMBuilder implements NodeLIRBuilderTool, SubstrateNodeLIRBuil
 
         gen.getDebugInfoPrinter().setValueName(llvmOperand, node);
 
-        if (SubstrateOptions.GenerateDebugInfo.getValue() != 0) {
+        if (SubstrateOptions.GenerateDebugInfo.getValue() > 0) {
             LLVMValueRef instr = llvmOperand.get();
             builder.buildDebugInfoForInstr(node, instr);
         }

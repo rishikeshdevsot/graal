@@ -58,6 +58,7 @@ import java.util.stream.StreamSupport;
 
 import com.oracle.svm.core.aarch64.AArch64CPUFeatureAccess;
 import com.oracle.svm.core.amd64.AMD64CPUFeatureAccess;
+import com.oracle.svm.hosted.image.LLVMDebugInfoProvider;
 import org.graalvm.collections.EconomicSet;
 import org.graalvm.collections.Pair;
 import org.graalvm.compiler.api.replacements.Fold;
@@ -644,6 +645,12 @@ public class NativeImageGenerator {
             featureHandler.forEachFeature(feature -> feature.beforeCompilation(beforeCompilationConfig));
 
             runtime.updateLazyState(hMetaAccess);
+
+            // Initialize the heap in the llvm debug info provider to generate types
+            if (SubstrateOptions.useLLVMBackend() && (SubstrateOptions.GenerateDebugInfo.getValue() > 0)) {
+                LLVMDebugInfoProvider.initializeHeap(heap);
+                LLVMDebugInfoProvider.generateTypeMap();
+            }
 
             NativeImageCodeCache codeCache;
             CompileQueue compileQueue;
