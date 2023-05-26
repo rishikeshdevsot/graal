@@ -24,6 +24,9 @@
  */
 package com.oracle.svm.core.graal.llvm;
 
+import static com.oracle.svm.core.util.VMError.shouldNotReachHere;
+import static com.oracle.svm.hosted.image.NativeImage.RWDATA_CGLOBALS_PARTITION_OFFSET;
+
 import java.io.FileOutputStream;
 import java.io.FileWriter;
 import java.io.IOException;
@@ -69,9 +72,7 @@ import com.oracle.svm.core.graal.llvm.util.LLVMToolchain;
 import com.oracle.svm.core.graal.llvm.util.LLVMToolchain.RunFailureException;
 import com.oracle.svm.core.heap.SubstrateReferenceMap;
 import com.oracle.svm.core.jdk.UninterruptibleUtils.AtomicInteger;
-import static com.oracle.svm.core.util.VMError.shouldNotReachHere;
 import com.oracle.svm.hosted.image.NativeImage.NativeTextSectionImpl;
-import static com.oracle.svm.hosted.image.NativeImage.RWDATA_CGLOBALS_PARTITION_OFFSET;
 import com.oracle.svm.hosted.image.NativeImageCodeCache;
 import com.oracle.svm.hosted.image.NativeImageHeap;
 import com.oracle.svm.hosted.image.RelocatableBuffer;
@@ -278,7 +279,6 @@ public class LLVMNativeImageCodeCache extends NativeImageCodeCache {
             LLVMToolchain.runLLVMCommand("llvm-link", basePath, args);
         } catch (RunFailureException e) {
             debug.log("%s", e.getOutput());
-            System.out.println("llvm-link failed because: " + e.getOutput());
             throw new GraalError("LLVM linking failed into " + getFunctionName(outputPath) + ": " + e.getStatus());
         }
     }

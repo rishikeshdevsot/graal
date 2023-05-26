@@ -24,6 +24,9 @@
  */
 package com.oracle.svm.core.graal.llvm;
 
+import static org.graalvm.compiler.debug.GraalError.shouldNotReachHere;
+import static org.graalvm.compiler.debug.GraalError.unimplemented;
+
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -31,8 +34,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.locks.ReentrantLock;
-
 
 import org.graalvm.compiler.code.CompilationResult;
 import org.graalvm.compiler.core.common.NumUtil;
@@ -44,8 +45,6 @@ import org.graalvm.compiler.core.common.type.Stamp;
 import org.graalvm.compiler.core.gen.DebugInfoBuilder;
 import org.graalvm.compiler.debug.DebugContext;
 import org.graalvm.compiler.debug.GraalError;
-import static org.graalvm.compiler.debug.GraalError.shouldNotReachHere;
-import static org.graalvm.compiler.debug.GraalError.unimplemented;
 import org.graalvm.compiler.graph.GraalGraphError;
 import org.graalvm.compiler.graph.Node;
 import org.graalvm.compiler.graph.NodeInputList;
@@ -87,7 +86,6 @@ import org.graalvm.compiler.nodes.extended.SwitchNode;
 import org.graalvm.compiler.nodes.java.TypeSwitchNode;
 import org.graalvm.compiler.nodes.spi.LIRLowerable;
 import org.graalvm.compiler.nodes.spi.NodeLIRBuilderTool;
-
 
 import com.oracle.svm.core.SubstrateOptions;
 import com.oracle.svm.core.graal.code.CGlobalDataInfo;
@@ -132,7 +130,6 @@ public class NodeLLVMBuilder implements NodeLIRBuilderTool, SubstrateNodeLIRBuil
     private final LLVMIRBuilder builder;
     private final RuntimeConfiguration runtimeConfiguration;
     private final DebugInfoBuilder debugInfoBuilder;
-    private ReentrantLock lock1 = new ReentrantLock();
 
     private Map<Node, LLVMValueWrapper> valueMap = new HashMap<>();
     private final Set<AbstractBlockBase<?>> processedBlocks = new HashSet<>();
@@ -279,6 +276,10 @@ public class NodeLLVMBuilder implements NodeLIRBuilderTool, SubstrateNodeLIRBuil
 
         for (Node node : blockMap.get(block)) {
             if (node instanceof ValueNode) {
+                /*
+                 * There can be cases in which the result of an instruction is already set before by
+                 * other instructions.
+                 */
                 if (!valueMap.containsKey(node)) {
                     ValueNode valueNode = (ValueNode) node;
                     try {
@@ -305,13 +306,7 @@ public class NodeLLVMBuilder implements NodeLIRBuilderTool, SubstrateNodeLIRBuil
             }
             builder.buildBranch(gen.getBlock(block.getFirstSuccessor()));
         }
-        // Create function parameters if debug info is enabled.
-        if (SubstrateOptions.GenerateDebugInfo.getValue() > 0) {
-            if (block == graph.getLastSchedule().getCFG().getStartBlock()) {
-                builder.createDIFunctionParameters();
-            }
-            builder.insertLocalVarDeclarations();
-        }
+
         processedBlocks.add(block);
     }
 
@@ -540,10 +535,7 @@ public class NodeLLVMBuilder implements NodeLIRBuilderTool, SubstrateNodeLIRBuil
 
         LLVMValueRef call = emitCall(i, callTarget, callee, patchpointId, args);
 
-
         if (!isVoid) {
-//            LLVMMetadataRef mdString = builder.testString(builder.constantString("test2 more and more"));
-//            builder.setMetadata(call, "kind1", mdString);
             setResult(i.asNode(), call);
         }
     }
@@ -621,7 +613,7 @@ public class NodeLLVMBuilder implements NodeLIRBuilderTool, SubstrateNodeLIRBuil
         } else {
             call = gen.buildStatepointCall(callee, nativeABI, patchpointId, args);
         }
-        // test test
+
         return call;
     }
 
@@ -811,12 +803,6 @@ public class NodeLLVMBuilder implements NodeLIRBuilderTool, SubstrateNodeLIRBuil
                         "value type doesn't match node stamp (" + node.stamp(NodeView.DEFAULT).toString() + ")", llvmOperand.get());
 
         gen.getDebugInfoPrinter().setValueName(llvmOperand, node);
-
-        if (SubstrateOptions.GenerateDebugInfo.getValue() > 0) {
-            LLVMValueRef instr = llvmOperand.get();
-            builder.buildDebugInfoForInstr(node, instr);
-        }
-
         valueMap.put(node, llvmOperand);
         return operand;
     }

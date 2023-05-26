@@ -24,6 +24,13 @@
  */
 package com.oracle.svm.core;
 
+import static org.graalvm.compiler.core.common.GraalOptions.TrackNodeSourcePosition;
+import static org.graalvm.compiler.core.common.SpectrePHTMitigations.None;
+import static org.graalvm.compiler.core.common.SpectrePHTMitigations.Options.SpectrePHTBarriers;
+import static org.graalvm.compiler.options.OptionType.Debug;
+import static org.graalvm.compiler.options.OptionType.Expert;
+import static org.graalvm.compiler.options.OptionType.User;
+
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -32,16 +39,10 @@ import org.graalvm.collections.EconomicMap;
 import org.graalvm.collections.UnmodifiableEconomicMap;
 import org.graalvm.compiler.api.replacements.Fold;
 import org.graalvm.compiler.core.common.GraalOptions;
-import static org.graalvm.compiler.core.common.GraalOptions.TrackNodeSourcePosition;
-import static org.graalvm.compiler.core.common.SpectrePHTMitigations.None;
-import static org.graalvm.compiler.core.common.SpectrePHTMitigations.Options.SpectrePHTBarriers;
 import org.graalvm.compiler.options.Option;
 import org.graalvm.compiler.options.OptionKey;
 import org.graalvm.compiler.options.OptionStability;
 import org.graalvm.compiler.options.OptionType;
-import static org.graalvm.compiler.options.OptionType.Debug;
-import static org.graalvm.compiler.options.OptionType.Expert;
-import static org.graalvm.compiler.options.OptionType.User;
 import org.graalvm.compiler.options.OptionValues;
 import org.graalvm.compiler.serviceprovider.JavaVersionUtil;
 

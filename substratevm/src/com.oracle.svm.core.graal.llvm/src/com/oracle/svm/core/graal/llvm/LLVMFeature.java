@@ -65,8 +65,6 @@ import com.oracle.svm.hosted.code.CompileQueue;
 import com.oracle.svm.hosted.image.NativeImageCodeCache;
 import com.oracle.svm.hosted.image.NativeImageCodeCacheFactory;
 import com.oracle.svm.hosted.image.NativeImageHeap;
-import com.oracle.svm.hosted.image.sources.SourceManager;
-
 
 /*
  * This feature enables the LLVM backend of Native Image. It does so by registering the backend,
@@ -125,14 +123,6 @@ public class LLVMFeature implements Feature, GraalFeature {
         accessImpl.registerAsCompiled((AnalysisMethod) LLVMExceptionUnwind.getRetrieveExceptionMethod(accessImpl.getMetaAccess()));
     }
 
-    @Override
-    public void beforeCompilation(BeforeCompilationAccess access) {
-        if (SubstrateOptions.GenerateDebugInfo.getValue() > 0) {
-            System.out.println("Source Manager is being added to Image singletons");
-            ImageSingletons.add(SourceManager.class, new SourceManager());
-        }
-    }
-    
     @Override
     public void registerLowerings(RuntimeConfiguration runtimeConfig, OptionValues options, Iterable<DebugHandlersFactory> factories, Providers providers, SnippetReflectionProvider snippetReflection,
                     Map<Class<? extends Node>, NodeLoweringProvider<?>> lowerings, boolean hosted) {
