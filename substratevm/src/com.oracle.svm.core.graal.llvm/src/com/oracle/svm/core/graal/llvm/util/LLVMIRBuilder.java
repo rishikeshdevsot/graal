@@ -28,16 +28,38 @@ import static com.oracle.svm.core.graal.llvm.util.LLVMUtils.FALSE;
 import static com.oracle.svm.core.graal.llvm.util.LLVMUtils.TRUE;
 import static com.oracle.svm.core.graal.llvm.util.LLVMUtils.dumpTypes;
 import static com.oracle.svm.core.graal.llvm.util.LLVMUtils.dumpValues;
+
 import static org.graalvm.compiler.debug.GraalError.shouldNotReachHere;
 
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
+import java.util.LinkedList;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
+import com.oracle.objectfile.debuginfo.DebugInfoProvider;
+import com.oracle.svm.core.graal.llvm.LLVMGenerator;
+import com.oracle.svm.hosted.image.LLVMDebugInfoProvider;
+import com.oracle.svm.hosted.image.DebugInfoProviderHelper;
+import com.oracle.svm.hosted.meta.HostedArrayClass;
+import com.oracle.svm.hosted.meta.HostedInstanceClass;
+import com.oracle.svm.hosted.meta.HostedPrimitiveType;
+import com.oracle.svm.hosted.meta.HostedType;
+import com.oracle.svm.shadowed.org.bytedeco.llvm.LLVM.LLVMDIBuilderRef;
+import com.oracle.svm.shadowed.org.bytedeco.llvm.LLVM.LLVMMetadataRef;
+
+import jdk.vm.ci.meta.Local;
+import jdk.vm.ci.meta.ResolvedJavaField;
+import jdk.vm.ci.meta.ResolvedJavaMethod;
+
 import org.graalvm.compiler.core.common.NumUtil;
 import org.graalvm.compiler.core.common.calc.Condition;
+import org.graalvm.compiler.core.common.memory.MemoryOrderMode;
 
 import com.oracle.svm.core.FrameAccess;
+import com.oracle.svm.core.SubstrateOptions;
+import com.oracle.svm.core.util.VMError;
 import com.oracle.svm.shadowed.org.bytedeco.javacpp.BytePointer;
 import com.oracle.svm.shadowed.org.bytedeco.javacpp.Pointer;
 import com.oracle.svm.shadowed.org.bytedeco.javacpp.PointerPointer;
@@ -50,22 +72,92 @@ import com.oracle.svm.shadowed.org.bytedeco.llvm.LLVM.LLVMModuleRef;
 import com.oracle.svm.shadowed.org.bytedeco.llvm.LLVM.LLVMTypeRef;
 import com.oracle.svm.shadowed.org.bytedeco.llvm.LLVM.LLVMValueRef;
 import com.oracle.svm.shadowed.org.bytedeco.llvm.global.LLVM;
+import org.graalvm.compiler.debug.DebugContext;
+import org.graalvm.compiler.graph.NodeSourcePosition;
+import org.graalvm.compiler.nodes.StructuredGraph;
+import org.graalvm.compiler.nodes.ValueNode;
 
 public class LLVMIRBuilder implements AutoCloseable {
     private static final String DEFAULT_INSTR_NAME = "";
+    private static final byte DW_ATE_float = 0x4;
 
     private LLVMContextRef context;
-    private LLVMBuilderRef builder;
+    public LLVMBuilderRef builder;
     private LLVMModuleRef module;
     private LLVMValueRef function;
+    public LLVMDIBuilderRef diBuilder;
 
-    private boolean primary;
-    private LLVMHelperFunctions helpers;
+    // Maps filenames to a compile unit
+    public HashMap<String, LLVMMetadataRef> diFilenameToCU;
+    // Maps filenames to a corresponding diFile
+    public HashMap<String, LLVMMetadataRef> diFilenameToDIFile;
+    // Maps function names to a LLVM Debug Info SubPrograms
+    public HashMap<String, LLVMMetadataRef> diFunctionToSP;
+    // Maps type names to a corresponding debug info type
+    public HashMap<String, LLVMMetadataRef> diTypeNameToDIType;
+    private final boolean primary;
+    private final LLVMHelperFunctions helpers;
+    private LLVMDebugInfoProvider dbgInfoProvider;
 
+    // The subprogram associated with the main function
+    private LLVMMetadataRef diSubProgram = null;
+    private LLVMDebugInfoProvider.LLVMLocationInfo methodStartLocation = null;
+
+    // The debug info file descriptor for the file containing the main function
+    private LLVMMetadataRef diMainFile;
+    private StructuredGraph graph;
+    private ResolvedJavaMethod mainMethod;
+
+    // Helper Objects for debug info generation
+
+    // The information about the local variables in each block and their corresponding instructions
+    // is stored in this linked list while building the instructions of the block, once all the instructions in the block are generated
+    // then the debug info for the local variables in the block is declared by iterating over this linked list.
+    public LinkedList<DILocalVarInfo> localVarListPerBlock;
+
+    // When generating types recursively, there are cases when the generation leads to 
+    // an infinite loop, for example: class java/lang/ThreadGroup has a member of class java/lang/Thread type and 
+    // class java/lang/Thread has a member of class java/lang/ThreadGroup. This causes an infinite loop when 
+    // creating types leading to a stack overflow. This global array is used to catch such infinite loops
+    private ArrayList<String> typesVisitedRecursively;
+    private DebugInfoProvider.DebugFieldInfo debugFieldInfo;
+
+    // The debug information regarding the local variables present in each block. First the information for all the local
+    // variables is collected and then the variables are declared at then end of the block.
+    class DILocalVarInfo {
+        public String varName;
+	public LLVMValueRef instr;
+        public LLVMMetadataRef diLocalVariable;
+        public LLVMMetadataRef diLocation;
+        DILocalVarInfo(String varName, LLVMValueRef instrArg, LLVMMetadataRef diLocalVariableArg, LLVMMetadataRef diLocationArg) {
+            this.varName = varName;
+	    this.instr = instrArg;
+            this.diLocalVariable = diLocalVariableArg;
+            this.diLocation = diLocationArg;
+        }
+    }
     public LLVMIRBuilder(String name) {
         this.context = LLVM.LLVMContextCreate();
         this.builder = LLVM.LLVMCreateBuilderInContext(context);
         this.module = LLVM.LLVMModuleCreateWithNameInContext(name, context);
+        if (SubstrateOptions.GenerateDebugInfo.getValue() > 0) {
+            String dbgInfoFlagName = "Debug Info Version";
+            String dwarfVersion = "Dwarf Version";
+            LLVMValueRef dwarfVersionVal = LLVM.LLVMConstInt(LLVM.LLVMInt32TypeInContext(context), 4, 0);
+            LLVMValueRef dbgInfoVal = LLVM.LLVMConstInt(LLVM.LLVMInt32TypeInContext(context), LLVM.LLVMDebugMetadataVersion(), 0);
+            LLVM.LLVMAddModuleFlag(this.module, LLVM.LLVMModuleFlagBehaviorWarning, dwarfVersion,
+                    dwarfVersion.length(), LLVM.LLVMValueAsMetadata(dwarfVersionVal));
+            LLVM.LLVMAddModuleFlag(this.module, LLVM.LLVMModuleFlagBehaviorWarning, dbgInfoFlagName,
+                    dbgInfoFlagName.length(), LLVM.LLVMValueAsMetadata(dbgInfoVal));
+            diBuilder = LLVM.LLVMCreateDIBuilder(this.module);
+            diFilenameToCU = new HashMap<String, LLVMMetadataRef>();
+            diFunctionToSP = new HashMap<String, LLVMMetadataRef>();
+            diFilenameToDIFile = new HashMap<String, LLVMMetadataRef>();
+            diTypeNameToDIType = new HashMap<String, LLVMMetadataRef>();
+            dbgInfoProvider = new LLVMDebugInfoProvider();
+            typesVisitedRecursively = new ArrayList<String>();
+            localVarListPerBlock = new LinkedList<DILocalVarInfo>();
+        }
         this.primary = true;
         this.helpers = new LLVMHelperFunctions(this);
     }
@@ -79,11 +171,271 @@ public class LLVMIRBuilder implements AutoCloseable {
         this.helpers = null;
     }
 
+    // The current field type should not have been already visited. If the current field type is an array, then its
+    // base type should not have been already visited.
+    private boolean typeCyclePresent(ResolvedJavaField field) {
+        HostedType checkType = (HostedType) field.getType();
+        if (checkType.isArray()) {
+            checkType = checkType.getBaseType();
+        }
+        if (checkType.isInterface() || checkType.isInstanceClass()) {
+            if (typesVisitedRecursively.contains(checkType.getName())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // Create Debug information for a class type and its members.
+    private LLVMMetadataRef createClassDebugTypeInfo(HostedType hostedType, LLVMMetadataRef diScope,
+                                                LLVMMetadataRef diSourceFile) {
+        LLVMDebugInfoProvider.LLVMDebugInstanceTypeInfo instanceTypeInfo =
+                dbgInfoProvider.new LLVMDebugInstanceTypeInfo(hostedType);
+        // type corresponding to the base class
+        LLVMMetadataRef baseClass = null;
+        if ((instanceTypeInfo.superClass() != null)) {
+            baseClass = getDiType(instanceTypeInfo.superClass().getName());
+        }
+        ArrayList<LLVMMetadataRef> memberList = new ArrayList<LLVMMetadataRef>();
+
+        instanceTypeInfo.fieldInfoProvider().forEach(debugFieldInfo -> {
+            LLVMDebugInfoProvider.LLVMDebugFieldInfo llvmFieldInfo = (LLVMDebugInfoProvider.LLVMDebugFieldInfo) debugFieldInfo;
+            // Check if generation of the current field causes a cycle, For example: class A is member of class B, but
+            // class A also has a member of class B E.g. ThreadGroup inside java/lang/ThreadGroup
+            if (!typeCyclePresent(llvmFieldInfo.getField())) {
+                memberList.add(LLVM.LLVMDIBuilderCreateMemberType(diBuilder, diScope, llvmFieldInfo.name(), llvmFieldInfo.name().length(),
+                    diSourceFile, 0, llvmFieldInfo.size() * 8, 0, llvmFieldInfo.offset(), 0,
+                    getDiType(llvmFieldInfo.getField().getType().getName())));
+            } else {
+                // TODO: How to deal with this case? LLVM DIBuilder does not have an option to create a class pointer
+            }
+        });
+
+        LLVMMetadataRef[] members = new LLVMMetadataRef[memberList.size()];
+        PointerPointer<LLVMMetadataRef> memberArray = new PointerPointer<>(memberList.toArray(members));
+        LLVMMetadataRef classType = LLVM.LLVMDIBuilderCreateClassType(diBuilder, diScope, instanceTypeInfo.typeName(),
+                instanceTypeInfo.typeName().length(), diSourceFile, 0, instanceTypeInfo.size() * 8,
+        0, 0, 0, baseClass, memberArray, memberList.size(), null,
+                null, "", 0);
+        return classType;
+    }
+
+    // Create debug information for an enumeration type
+    private LLVMMetadataRef createEnumDebugTypeinfo(HostedType hostedType, LLVMMetadataRef diScope,
+                                                    LLVMMetadataRef diSourceFile) {
+        // Treating the base type of enum to be an integer value
+        // the typeChar of the hostedType for int is "I" in the heap
+        LLVMMetadataRef diBaseType = getDiType("I");
+        LLVMDebugInfoProvider.LLVMDebugEnumTypeInfo enumTypeInfo =
+                dbgInfoProvider.new LLVMDebugEnumTypeInfo((HostedInstanceClass) hostedType);
+
+        ArrayList<LLVMMetadataRef> enumList = new ArrayList<LLVMMetadataRef>();
+        if (enumTypeInfo.staticFieldInfoProvider() != null) {
+            enumTypeInfo.staticFieldInfoProvider().forEach(debugFieldInfo -> {
+                // TODO: How to get the value for an enum, is it using readStorageValue? Not sure how I am supposed to use it
+                int enumValue = 0;
+                LLVMDebugInfoProvider.LLVMDebugFieldInfo llvmFieldInfo = (LLVMDebugInfoProvider.LLVMDebugFieldInfo) debugFieldInfo;
+                if (llvmFieldInfo.isEnumerator()) {
+                    enumList.add(LLVM.LLVMDIBuilderCreateEnumerator(diBuilder, llvmFieldInfo.name(), llvmFieldInfo.name().length(),
+                            enumValue, 1));
+                }
+            });
+        }
+
+        LLVMMetadataRef[] enums = new LLVMMetadataRef[enumList.size()];
+        PointerPointer<LLVMMetadataRef> enumArray = new PointerPointer<LLVMMetadataRef>(enumList.toArray(enums));
+        LLVMMetadataRef enumType = LLVM.LLVMDIBuilderCreateEnumerationType(
+                diBuilder, diScope, enumTypeInfo.typeName(),
+                enumTypeInfo.typeName().length(), diSourceFile, 0, enumTypeInfo.size() * 8,
+                0, enumArray, enumList.size(), diBaseType);
+        return enumType;
+
+    }
+
+    // Create DebugType info for the hosted type
+    public void createDebugTypeInfo(HostedType hostedType) {
+
+        // Create diFile and compile unit information required common for all the types
+        LLVMDebugInfoProvider.LLVMDebugTypeInfo dbgTypeInfo =
+            dbgInfoProvider.new LLVMDebugTypeInfo(hostedType);
+        String filename = dbgTypeInfo.fileName();
+
+        LLVMMetadataRef diSourceFile = null;
+        LLVMMetadataRef diCompileUnit = null;
+        if (!filename.equals("")) {
+            String directory = dbgTypeInfo.filePath().toString();
+            diSourceFile = getDiFile(filename, directory);
+            diCompileUnit = getCompileUnit(filename, diSourceFile);
+        }
+
+        if (hostedType.isEnum()) {
+            LLVMMetadataRef enumType = createEnumDebugTypeinfo(hostedType, diCompileUnit, diSourceFile);
+            diTypeNameToDIType.put(hostedType.getName(), enumType);
+
+        // LLVM DIBuilder doesn't provide a special method to generate an interface type, so interfaces are being treated the same
+        // as classes
+        } else if (hostedType.isInstanceClass() || hostedType.isInterface()) {
+            // Add the type that has been visited
+            typesVisitedRecursively.add(hostedType.getName());
+            LLVMMetadataRef classType = createClassDebugTypeInfo(hostedType, diCompileUnit, diSourceFile);
+
+            // Remove it from the list once the type is successfully created
+            typesVisitedRecursively.remove(hostedType.getName());
+            diTypeNameToDIType.put(hostedType.getName(), classType);
+
+        } else if (hostedType.isArray()) {
+            LLVMDebugInfoProvider.LLVMDebugArrayTypeInfo arrayTypeInfo =
+                    dbgInfoProvider.new LLVMDebugArrayTypeInfo((HostedArrayClass) hostedType);
+            // The subscipts correspond to the depth of the array and the number of elements in each suscript.
+            LLVMMetadataRef[] subscripts = new LLVMMetadataRef[arrayTypeInfo.arrayDimension()];
+            for (int i = 0; i < arrayTypeInfo.arrayDimension(); i++) {
+                // TODO: Get the correct number of elements
+                int numElements = 5;
+                subscripts[i] = LLVM.LLVMDIBuilderGetOrCreateSubrange(diBuilder, 0, numElements);
+            }
+            PointerPointer<LLVMMetadataRef> subscriptPointer = new PointerPointer<LLVMMetadataRef>(subscripts);
+            LLVMMetadataRef diBaseType = getDiType(arrayTypeInfo.baseType().getName());
+            LLVMMetadataRef arrayType = LLVM.LLVMDIBuilderCreateArrayType(diBuilder, arrayTypeInfo.size() * 8,
+                    0, diBaseType, subscriptPointer, 1);
+            diTypeNameToDIType.put(hostedType.getName(), arrayType);
+
+        } else if (hostedType.isPrimitive()) {
+            LLVMDebugInfoProvider.LLVMDebugPrimitiveTypeInfo primitiveTypeInfo =
+                    dbgInfoProvider.new LLVMDebugPrimitiveTypeInfo((HostedPrimitiveType) hostedType);
+            LLVMMetadataRef primitiveDIType = LLVM.LLVMDIBuilderCreateBasicType(this.diBuilder,
+                    primitiveTypeInfo.typeName(), primitiveTypeInfo.typeName().length(),
+                    primitiveTypeInfo.bitCount(), primitiveTypeInfo.computeEncoding(), primitiveTypeInfo.flags());
+            diTypeNameToDIType.put(hostedType.getName(), primitiveDIType);
+
+        } else {
+            throw new RuntimeException("Unknown type kind " + hostedType.getName());
+        }
+    }
+
+    // This function gets called recursively when a type inside another type
+    // has not been generated yet, e.g. member type of a class
+    public LLVMMetadataRef getDiType(String typeName) {
+        LLVMMetadataRef returnType;
+        // If a LLVM Debug info type has already been generated for this type.
+        if (diTypeNameToDIType.containsKey(typeName)) {
+            returnType = diTypeNameToDIType.get(typeName);
+
+        // If the NativeImageHeap contains a type then generate a debug info type
+        } else if (LLVMDebugInfoProvider.typeMap.containsKey(typeName)) {
+            createDebugTypeInfo(LLVMDebugInfoProvider.typeMap.get(typeName));
+            returnType = diTypeNameToDIType.get(typeName);
+
+        //TODO: What to do when the type is not present in the heap? E.g. DynamicHub
+        } else {
+            returnType = createPlaceholderDiType(typeName);
+        }
+        return returnType;
+    }
+
+    // Creates a placeholder Debug Info type
+    public LLVMMetadataRef createPlaceholderDiType(String typeName) {
+       LLVMMetadataRef diType = LLVM.LLVMDIBuilderCreateBasicType(this.diBuilder, typeName, typeName.length(),
+                    32, DW_ATE_float, 0);
+       diTypeNameToDIType.put(typeName, diType);
+       return diType;
+    }
+
     public void setMainFunction(String functionName, LLVMTypeRef functionType) {
         assert function == null;
         this.function = addFunction(functionName, functionType);
     }
 
+    public void setMainMethod(ResolvedJavaMethod method) {
+        this.mainMethod = method;
+    }
+
+    public void setGraph(StructuredGraph graph) {
+        this.graph = graph;
+    }
+
+    // Get or create a debug info descriptor for a file if not already present
+    public LLVMMetadataRef getDiFile(String filename, String directory) {
+        if (diFilenameToDIFile.containsKey(filename + directory)) {
+           return diFilenameToDIFile.get(filename + directory);
+        } else {
+            LLVMMetadataRef diFile = LLVM.LLVMDIBuilderCreateFile(diBuilder, filename, filename.length(), directory,
+                    directory.length());
+            diFilenameToDIFile.put(filename + directory, diFile);
+            return diFile;
+        }
+    }
+
+    // Create a subprogram for the main function if file information is present for the main function
+    public void setDISubProgram() {
+        DebugContext debugContext = graph.getDebug();
+        dbgInfoProvider.debugContext = debugContext;
+        LLVMDebugInfoProvider.LLVMLocationInfo dbgLocInfo =
+                dbgInfoProvider.new LLVMLocationInfo(this.mainMethod, 0, debugContext);
+        // The llvm-link verifier doesn't allow null filenames for the subprogram
+        if ((dbgLocInfo.fileName() != null) && (!dbgLocInfo.fileName().equals(""))) {
+            this.methodStartLocation = dbgLocInfo;
+            String mainFilename = dbgLocInfo.fileName();
+            String mainDirectory = String.valueOf(dbgLocInfo.filePath());
+            this.diMainFile = getDiFile(mainFilename, mainDirectory);
+            getCompileUnit(mainFilename, this.diMainFile);
+            this.diSubProgram = getSubProgram(this.diMainFile, this.mainMethod);
+            LLVM.LLVMSetSubprogram(this.function, this.diSubProgram);
+            return;
+        }
+        // Ignoring creating subPrograms for functions with no filenames
+    }
+
+    // Create debug info declaration for the function parameters of the main method
+    public void createDIFunctionParameters() {
+        if (this.diSubProgram == null) {
+            return;
+        }
+
+        int offset = (LLVMGenerator.isEntryPoint(this.mainMethod) ? 0 : LLVMGenerator.SpecialRegister.count());
+        int paramIndex = offset;
+
+        ResolvedJavaMethod.Parameter[] params;
+        // NonBytecodeStaticMethod does not have getParameters() implemented so the unimplemented() exception needs to
+        // be caught.
+        try {
+            params = this.mainMethod.getParameters();
+            if (params == null) {
+                return;
+            }
+        } catch (UnsupportedOperationException e) {
+            return;
+        }
+        // TODO: For non static methods, should I create a parameter called "this" as well?
+        // Iterate over all the function parameters
+        for (ResolvedJavaMethod.Parameter param : params) {
+            String paramName = param.getName();
+            LLVMMetadataRef paramDIType;
+            paramDIType = getDiType(param.getType().getName());
+
+            LLVMValueRef llvmParam = getFunctionParam(paramIndex);
+            LLVMValueRef paramAlloca = createEntryBlockAlloca(typeOf(llvmParam), paramName);
+
+            // (paramIndex + 1) because the llvm documentation states that index starts at 1.
+            LLVMMetadataRef diParamVariable = LLVM.LLVMDIBuilderCreateParameterVariable(diBuilder, this.diSubProgram, paramName,
+                    paramName.length(), paramIndex + 1, this.diMainFile, 0, paramDIType, 0, 0);
+            LLVMMetadataRef debugLoc = LLVM.LLVMDIBuilderCreateDebugLocation(context, this.methodStartLocation.line(), 0,
+                    this.diSubProgram, null);
+
+            long[] nullopt = {};
+            LLVMMetadataRef expr = LLVM.LLVMDIBuilderCreateExpression(diBuilder, nullopt, nullopt.length);
+
+            LLVM.LLVMDIBuilderInsertDeclareAtEnd(diBuilder, paramAlloca, diParamVariable, expr, debugLoc, LLVM.LLVMGetInsertBlock(builder));
+            paramIndex++;
+        }
+    }
+
+    // Before the debug info for function parameters is declared, they need have corresponding allocas created.
+    public LLVMValueRef createEntryBlockAlloca(LLVMTypeRef allocaType, String allocaName) {
+        LLVMBasicBlockRef startBlock = LLVM.LLVMGetFirstBasicBlock(this.function);
+        LLVMValueRef firstInst = LLVM.LLVMGetFirstInstruction(startBlock);
+        LLVM.LLVMPositionBuilderBefore(builder, firstInst);
+        return LLVM.LLVMBuildAlloca(builder, allocaType, allocaName);
+    }
     /* Module */
 
     public byte[] getBitcode() {
@@ -95,6 +447,13 @@ public class LLVMIRBuilder implements AutoCloseable {
         start.get(bitcode, 0, size);
         LLVM.LLVMDisposeMemoryBuffer(buffer);
         return bitcode;
+    }
+
+    public LLVMModuleRef getModule() {
+        return this.module;
+    }
+    public LLVMBuilderRef getBuilderRef() {
+        return this.builder;
     }
 
     public boolean verifyBitcode() {
@@ -110,6 +469,15 @@ public class LLVMIRBuilder implements AutoCloseable {
         LLVM.LLVMDisposeBuilder(builder);
         builder = null;
         if (primary) {
+            if (SubstrateOptions.GenerateDebugInfo.getValue() > 0) {
+                LLVM.LLVMDIBuilderFinalize(diBuilder);
+                diFilenameToCU.clear();
+                diFunctionToSP.clear();
+                diTypeNameToDIType.clear();
+                diFilenameToDIFile.clear();
+                typesVisitedRecursively.clear();
+                diBuilder = null;
+            }
             LLVM.LLVMDisposeModule(module);
             module = null;
             LLVM.LLVMContextDispose(context);
@@ -547,6 +915,10 @@ public class LLVMIRBuilder implements AutoCloseable {
         return LLVM.LLVMConstStringInContext(context, string, string.length(), FALSE);
     }
 
+    public LLVMMetadataRef mdString(String string){
+        return LLVM.LLVMMDStringInContext2(context, string, string.length());
+    }
+
     public LLVMValueRef constantVector(LLVMValueRef... values) {
         return LLVM.LLVMConstVector(new PointerPointer<>(values), values.length);
     }
@@ -782,6 +1154,173 @@ public class LLVMIRBuilder implements AutoCloseable {
         buildIntrinsicCall("llvm.debugtrap", functionType(voidType()));
     }
 
+    private LLVMMetadataRef getCompileUnit(String filename, LLVMMetadataRef diFile) {
+        final String producer = "Graal Compiler";
+        LLVMMetadataRef compileUnit;
+        if (diFilenameToCU.containsKey(filename)) {
+            compileUnit = diFilenameToCU.get(filename);
+        } else {
+            compileUnit = LLVM.LLVMDIBuilderCreateCompileUnit(diBuilder, LLVM.LLVMDWARFSourceLanguageJava, diFile, producer, producer.length(),
+                    0, "", 0, 0, "", 0, LLVM.LLVMDWARFEmissionFull,
+                    0, 1, 1, "", 0, "", 0);
+
+
+            diFilenameToCU.put(filename, compileUnit);
+
+        }
+        return compileUnit;
+    }
+
+    private PointerPointer<LLVMMetadataRef> buildFunctionParamType(ResolvedJavaMethod method) {
+        int paramCount = method.getSignature().getParameterCount(false);
+        LLVMMetadataRef[] paramTypes = new LLVMMetadataRef[paramCount + 1];
+        ArrayList<LLVMMetadataRef> paramList = new ArrayList<LLVMMetadataRef>();
+        ArrayList<String> typeNames = new ArrayList<String>();
+        // First add the return type name
+        typeNames.add(method.getSignature().getReturnType(method.getDeclaringClass()).getName());
+        // Add the typenames of the parameters
+        for (int i = 0; i < paramCount; i++) {
+            typeNames.add(method.getSignature().getParameterType(i, method.getDeclaringClass()).getName());
+        }
+        for (String typeName: typeNames) {
+            paramList.add(getDiType(typeName));
+        }
+        return new PointerPointer<LLVMMetadataRef>(paramList.toArray(paramTypes));
+    }
+
+    private LLVMMetadataRef getSubProgram(LLVMMetadataRef diFile, ResolvedJavaMethod method) {
+        String linkageName = LLVMGenerator.getFunctionName(method);
+        String methodName = DebugInfoProviderHelper.getMethodName(method);
+        LLVMMetadataRef subProgram;
+        if (diFunctionToSP.containsKey(linkageName)) {
+            subProgram = diFunctionToSP.get(linkageName);
+        } else {
+            PointerPointer<LLVMMetadataRef> paramTypeP = buildFunctionParamType(method);
+
+            LLVMMetadataRef spType = LLVM.LLVMDIBuilderCreateSubroutineType(diBuilder,
+                    diFile, paramTypeP, method.getSignature().getParameterCount(false), 0);
+            LLVMDebugInfoProvider.LLVMLocationInfo dbgLocInfo =
+                    dbgInfoProvider.new LLVMLocationInfo(method, 0, graph.getDebug());
+            //TODO: Get the scope line num if possible
+            subProgram = LLVM.LLVMDIBuilderCreateFunction(
+                    diBuilder, diFile, methodName, methodName.length(), linkageName, linkageName.length(),
+                    diFile, dbgLocInfo.line(), // Func Line
+                    spType, 0, 1,
+                    0, // Scope Line
+                    0, 0);
+            diFunctionToSP.put(linkageName, subProgram);
+        }
+        return subProgram;
+    }
+
+    public void createDILocalVariable(ValueNode node, LLVMValueRef instr, LLVMMetadataRef diLocation, LLVMMetadataRef subProgram,
+                                    int lineNum, int bci, ResolvedJavaMethod method) {
+        Local[] localVars = DebugInfoProviderHelper.getLocalsBySlot(method, bci);
+        for (Local localVar: localVars) {
+            // Assuming the start bci of a local variable is where it is first declared
+            if (bci >= localVar.getStartBCI() && bci <= localVar.getEndBCI()) {
+                LLVMMetadataRef diFile = LLVM.LLVMDIScopeGetFile(subProgram);
+                LLVMMetadataRef localDIType = getDiType(localVar.getType().getName());
+                String varName = localVar.getName();
+                LLVMMetadataRef diLocalVariable = LLVM.LLVMDIBuilderCreateAutoVariable(diBuilder, subProgram, varName,
+                        varName.length(), diFile, lineNum, localDIType, 0, 0, 0);
+		// Check if the variable has already been added for this block
+		if (!localVarListPerBlock.isEmpty()) {
+            		for (DILocalVarInfo curVar : this.localVarListPerBlock) {
+				if (curVar.varName.equals(varName)) {
+					return;
+				}
+		}
+		}
+                DILocalVarInfo varInfo = new DILocalVarInfo(varName, instr, diLocalVariable, diLocation);
+		localVarListPerBlock.push(varInfo);
+	    }
+        }
+    }
+
+    public void insertLocalVarDeclarations() {
+        if (!localVarListPerBlock.isEmpty()) {
+	    for (DILocalVarInfo varInfo : localVarListPerBlock) {
+                long[] nullopt = {};
+                LLVMMetadataRef expr = LLVM.LLVMDIBuilderCreateExpression(diBuilder, nullopt, nullopt.length);
+                LLVM.LLVMDIBuilderInsertDeclareAtEnd(diBuilder, varInfo.instr, varInfo.diLocalVariable, expr, varInfo.diLocation, LLVM.LLVMGetInsertBlock(builder));
+            }
+            localVarListPerBlock.clear();
+        }
+    }
+
+ public void buildDebugInfoForInstr(ValueNode node, LLVMValueRef instr) {
+        NodeSourcePosition position = node.getNodeSourcePosition();
+        // If the subprogram is null, the debuginfo inside the function is ignored.
+        if (this.diSubProgram != null) {
+            if ((position != null)) {
+                DebugContext debugContext = node.getDebug();
+                LLVMDebugInfoProvider.LLVMLocationInfo dbgLocInfo =
+                        dbgInfoProvider.new LLVMLocationInfo(position.getMethod(), position.getBCI(), debugContext);
+                String filename = dbgLocInfo.fileName();
+                setBciMetadata(instr, position.getBCI());
+		// The llvm-link verifier doesn't allow null filenames for subprograms
+                if (!filename.equals("")) {
+                    String directory = "";
+                    if (dbgLocInfo.filePath() != null) {
+                        directory = dbgLocInfo.filePath().toString();
+                    }
+                    int lineNum = dbgLocInfo.line();
+                    LLVMMetadataRef diFile = getDiFile(filename, directory);
+                    LLVMMetadataRef subProgram = getSubProgram(diFile, position.getMethod());
+                    LLVMMetadataRef diLocation;
+                    // Means the method is inlined
+                    if (position.getMethod() != this.mainMethod) {
+                        // TODO: Is it possible to get the location where a method is inlined?
+                        LLVMMetadataRef inlinedAt = LLVM.LLVMDIBuilderCreateDebugLocation(context, 0, 0,
+                                this.diSubProgram, null);
+                        diLocation = LLVM.LLVMDIBuilderCreateDebugLocation(context, lineNum, position.getBCI(),
+                                subProgram, inlinedAt);
+                    } else {
+                        diLocation = LLVM.LLVMDIBuilderCreateDebugLocation(context, lineNum, position.getBCI(),
+                                subProgram, null);
+                    }
+                    LLVM.LLVMSetCurrentDebugLocation2(builder, diLocation);
+                    // Call instructions require the following API call for the debug info to be set corectly, not really sure why
+                    if ((LLVM.LLVMIsACallInst(instr) != null) || (LLVM.LLVMIsAInvokeInst(instr) != null)) {
+                        LLVM.LLVMSetInstDebugLocation(builder, instr);
+                    }
+                    // Check if this llvm instruction corresponds to any local variables declared
+                    if (DebugInfoProviderHelper.getLocalsBySlot(position.getMethod(), position.getBCI()) != null) {
+                        createDILocalVariable(node, instr, diLocation, subProgram, lineNum, position.getBCI(), position.getMethod());
+                    }
+                    return;
+                }
+            }
+            // Set placeholder debug information to make llvm-link verifier pass
+            setPlaceHolderDiLocation(instr);
+        }
+        // Ignoring adding debug info for instructions with no positions, so if there are inlinable call instructions without
+        // position, they will be caught by the asserts of the llvm-linker.
+  }
+
+   public void setBciMetadata(LLVMValueRef instr, int bci) {
+	LLVMMetadataRef bciNode = LLVM.LLVMMDStringInContext2(context, String.valueOf(bci), String.valueOf(bci).length());
+	String kindID = "bci";
+	// LLVMMetadataRef bciNode = LLVM.LLVMDIBuilderCreateConstantValueExpression(diBuilder, bci);
+	setMetadata(instr, kindID, LLVM.LLVMMetadataAsValue(context, bciNode));
+
+
+
+
+    }
+
+    // Set placeholder debug information to make llvm-link verifier pass
+    public void setPlaceHolderDiLocation(LLVMValueRef instr) {
+        if (((LLVM.LLVMIsACallInst(instr) != null) || (LLVM.LLVMIsAInvokeInst(instr) != null)) &&
+                (this.diSubProgram != null)) {
+            LLVMMetadataRef diLocation = LLVM.LLVMDIBuilderCreateDebugLocation(context, 0, 0,
+                    this.diSubProgram, null);
+            LLVM.LLVMSetCurrentDebugLocation2(builder, diLocation);
+            LLVM.LLVMSetInstDebugLocation(builder, instr);
+        }
+    }
+
     public LLVMValueRef functionEntryCount(LLVMValueRef count) {
         String functionEntryCountName = "function_entry_count";
         LLVMValueRef[] values = new LLVMValueRef[2];
@@ -797,6 +1336,8 @@ public class LLVMIRBuilder implements AutoCloseable {
         System.arraycopy(weights, 0, values, 1, weights.length);
         return LLVM.LLVMMDNodeInContext(context, new PointerPointer<>(values), values.length);
     }
+
+
 
     /* Comparisons */
 
@@ -1202,6 +1743,10 @@ public class LLVMIRBuilder implements AutoCloseable {
         LLVMTypeRef frameAddressType = functionType(rawPointerType(), intType());
         return buildIntrinsicCall("llvm.frameaddress", frameAddressType, level);
     }
+
+//    public LLVMMetadataRef buildDILocGet(String filename, int lineNumber){
+//        return
+//    }
 
     /* Atomic */
 
