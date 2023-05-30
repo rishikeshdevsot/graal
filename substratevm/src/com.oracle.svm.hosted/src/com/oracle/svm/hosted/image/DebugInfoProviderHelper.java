@@ -154,10 +154,14 @@ public class DebugInfoProviderHelper {
     }
 
     public static int getLineNumber(ResolvedJavaMethod method, int bci) {
-        LineNumberTable lineNumberTable = method.getLineNumberTable();
-        if (lineNumberTable != null && bci >= 0) {
-            return lineNumberTable.getLineNumber(bci);
+        if (method != null) {
+            StackTraceElement ste = method.asStackTraceElement(bci);
+            return ste.getLineNumber();
         }
+        // LineNumberTable lineNumberTable = method.getLineNumberTable();
+        // if (lineNumberTable != null && bci >= 0) {
+        //     return lineNumberTable.getLineNumber(bci);
+        // }
         return -1;
     }
 

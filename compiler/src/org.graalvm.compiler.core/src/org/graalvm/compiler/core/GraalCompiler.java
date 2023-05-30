@@ -216,6 +216,10 @@ public class GraalCompiler {
     @SuppressWarnings("try")
     public static void emitFrontEnd(Providers providers, TargetProvider target, StructuredGraph graph, PhaseSuite<HighTierContext> graphBuilderSuite, OptimisticOptimizations optimisticOpts,
                     ProfilingInfo profilingInfo, Suites suites) {
+        //System.out.println("Frontend is invoked");
+        // if (graph.toString().contains("org.apache.hadoop.hdfs.server.blockmanagement.BlockPlacementPolicyDefault.chooseRandom")) {
+        //     System.out.println("front end target " + graph);
+        // }
         DebugContext debug = graph.getDebug();
         try (DebugContext.Scope s = debug.scope("FrontEnd"); DebugCloseable a = FrontEnd.start(debug)) {
             HighTierContext highTierContext = new HighTierContext(providers, graphBuilderSuite, optimisticOpts);

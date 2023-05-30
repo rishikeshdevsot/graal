@@ -59,6 +59,7 @@ import org.graalvm.compiler.core.common.memory.MemoryOrderMode;
 
 import com.oracle.svm.core.FrameAccess;
 import com.oracle.svm.core.SubstrateOptions;
+import org.graalvm.compiler.nodes.cfg.Block;
 import com.oracle.svm.core.util.VMError;
 import com.oracle.svm.shadowed.org.bytedeco.javacpp.BytePointer;
 import com.oracle.svm.shadowed.org.bytedeco.javacpp.Pointer;
@@ -76,6 +77,7 @@ import org.graalvm.compiler.debug.DebugContext;
 import org.graalvm.compiler.graph.NodeSourcePosition;
 import org.graalvm.compiler.nodes.StructuredGraph;
 import org.graalvm.compiler.nodes.ValueNode;
+import org.graalvm.compiler.graph.Node;
 
 public class LLVMIRBuilder implements AutoCloseable {
     private static final String DEFAULT_INSTR_NAME = "";
@@ -83,6 +85,9 @@ public class LLVMIRBuilder implements AutoCloseable {
 
     private LLVMContextRef context;
     public LLVMBuilderRef builder;
+    public Block currentBlock = null;
+    public boolean checkNode = false;
+    public boolean B55 = false;
     private LLVMModuleRef module;
     private LLVMValueRef function;
     public LLVMDIBuilderRef diBuilder;
@@ -105,7 +110,7 @@ public class LLVMIRBuilder implements AutoCloseable {
 
     // The debug info file descriptor for the file containing the main function
     private LLVMMetadataRef diMainFile;
-    private StructuredGraph graph;
+    public StructuredGraph graph;
     private ResolvedJavaMethod mainMethod;
 
     // Helper Objects for debug info generation
@@ -1213,28 +1218,20 @@ public class LLVMIRBuilder implements AutoCloseable {
         return subProgram;
     }
 
-    public void createDILocalVariable(ValueNode node, LLVMValueRef instr, LLVMMetadataRef diLocation, LLVMMetadataRef subProgram,
+    public void createDILocalVariable(Node node, LLVMValueRef instr, LLVMMetadataRef diLocation, LLVMMetadataRef subProgram,
                                     int lineNum, int bci, ResolvedJavaMethod method) {
         Local[] localVars = DebugInfoProviderHelper.getLocalsBySlot(method, bci);
         for (Local localVar: localVars) {
             // Assuming the start bci of a local variable is where it is first declared
-            if (bci >= localVar.getStartBCI() && bci <= localVar.getEndBCI()) {
+            if (bci == localVar.getStartBCI()) {
                 LLVMMetadataRef diFile = LLVM.LLVMDIScopeGetFile(subProgram);
                 LLVMMetadataRef localDIType = getDiType(localVar.getType().getName());
                 String varName = localVar.getName();
                 LLVMMetadataRef diLocalVariable = LLVM.LLVMDIBuilderCreateAutoVariable(diBuilder, subProgram, varName,
                         varName.length(), diFile, lineNum, localDIType, 0, 0, 0);
-		// Check if the variable has already been added for this block
-		if (!localVarListPerBlock.isEmpty()) {
-            		for (DILocalVarInfo curVar : this.localVarListPerBlock) {
-				if (curVar.varName.equals(varName)) {
-					return;
-				}
-		}
-		}
                 DILocalVarInfo varInfo = new DILocalVarInfo(varName, instr, diLocalVariable, diLocation);
-		localVarListPerBlock.push(varInfo);
-	    }
+		        localVarListPerBlock.push(varInfo);
+	        }
         }
     }
 
@@ -1249,8 +1246,25 @@ public class LLVMIRBuilder implements AutoCloseable {
         }
     }
 
- public void buildDebugInfoForInstr(ValueNode node, LLVMValueRef instr) {
+ public void buildDebugInfoForInstr(Node node, LLVMValueRef instr) {
         NodeSourcePosition position = node.getNodeSourcePosition();
+        if (checkNode) {
+            // System.out.println("\n\n Printing in buildDebugInfoForInstr");
+            // System.out.println("Found target " + graph);
+            // System.out.println("This block is " + currentBlock);
+            NodeSourcePosition pos = node.getNodeSourcePosition();
+            if (pos == null) {
+                    System.out.println("Printing in buildDebugInfo \n" + "Graph: " + graph +"\n" 
+                    + "Block:" + this.currentBlock + "\n" + "Node is " + node + " it DOES NOT have source location\n");
+                }else {
+                    System.out.println("Printing in buildDebugInfo \n" + "Graph: " + graph +"\n" 
+                    + "Block:" + this.currentBlock + "\n" + "Node is " + node + "\n" + "pos: " + pos +"\n");
+                    // System.out.println("Node is " + node + " and its bci is: " + pos.getBCI());
+                    // System.out.println("Node source position is " + pos);
+
+                }
+            System.out.println("\n\n");
+        }
         // If the subprogram is null, the debuginfo inside the function is ignored.
         if (this.diSubProgram != null) {
             if ((position != null)) {
@@ -1259,6 +1273,7 @@ public class LLVMIRBuilder implements AutoCloseable {
                         dbgInfoProvider.new LLVMLocationInfo(position.getMethod(), position.getBCI(), debugContext);
                 String filename = dbgLocInfo.fileName();
                 setBciMetadata(instr, position.getBCI());
+                setLineMetadata(instr, dbgLocInfo.line());
 		// The llvm-link verifier doesn't allow null filenames for subprograms
                 if (!filename.equals("")) {
                     String directory = "";
@@ -1282,7 +1297,8 @@ public class LLVMIRBuilder implements AutoCloseable {
                     }
                     LLVM.LLVMSetCurrentDebugLocation2(builder, diLocation);
                     // Call instructions require the following API call for the debug info to be set corectly, not really sure why
-                    if ((LLVM.LLVMIsACallInst(instr) != null) || (LLVM.LLVMIsAInvokeInst(instr) != null)) {
+                    if(LLVM.LLVMIsAInstruction(instr) != null){
+                    //if ((LLVM.LLVMIsACallInst(instr) != null) || (LLVM.LLVMIsAInvokeInst(instr) != null) || (LLVM.LLVMIsABranchInst(instr) != null)) {
                         LLVM.LLVMSetInstDebugLocation(builder, instr);
                     }
                     // Check if this llvm instruction corresponds to any local variables declared
@@ -1300,14 +1316,17 @@ public class LLVMIRBuilder implements AutoCloseable {
   }
 
    public void setBciMetadata(LLVMValueRef instr, int bci) {
-	LLVMMetadataRef bciNode = LLVM.LLVMMDStringInContext2(context, String.valueOf(bci), String.valueOf(bci).length());
-	String kindID = "bci";
-	// LLVMMetadataRef bciNode = LLVM.LLVMDIBuilderCreateConstantValueExpression(diBuilder, bci);
-	setMetadata(instr, kindID, LLVM.LLVMMetadataAsValue(context, bciNode));
+	    LLVMMetadataRef bciNode = LLVM.LLVMMDStringInContext2(context, String.valueOf(bci), String.valueOf(bci).length());
+	    String kindID = "bci";
+	    // LLVMMetadataRef bciNode = LLVM.LLVMDIBuilderCreateConstantValueExpression(diBuilder, bci);
+	    setMetadata(instr, kindID, LLVM.LLVMMetadataAsValue(context, bciNode));
+    }
 
-
-
-
+    public void setLineMetadata(LLVMValueRef instr, int bci) {
+	    LLVMMetadataRef bciNode = LLVM.LLVMMDStringInContext2(context, String.valueOf(bci), String.valueOf(bci).length());
+	    String kindID = "line";
+	    // LLVMMetadataRef bciNode = LLVM.LLVMDIBuilderCreateConstantValueExpression(diBuilder, bci);
+	    setMetadata(instr, kindID, LLVM.LLVMMetadataAsValue(context, bciNode));
     }
 
     // Set placeholder debug information to make llvm-link verifier pass

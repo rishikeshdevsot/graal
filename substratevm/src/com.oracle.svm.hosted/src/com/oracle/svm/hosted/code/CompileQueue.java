@@ -362,6 +362,7 @@ public class CompileQueue {
             assert suitesNotCreated();
             createSuites();
             try (StopTimer t = new Timer(imageName, "(compile)").start()) {
+                System.out.println("start compile");
                 compileAll();
             }
         } catch (InterruptedException ie) {
@@ -679,9 +680,13 @@ public class CompileQueue {
 
     protected void compileAll() throws InterruptedException {
         executor.init();
+        System.out.println("regular ensure compile");
+
         universe.getMethods().stream()
                         .filter(method -> method.isEntryPoint() || CompilationInfoSupport.singleton().isForcedCompilation(method))
                         .forEach(method -> ensureCompiled(method, new EntryPointReason()));
+
+        System.out.println("deopt ensure compile");
 
         universe.getMethods().stream()
                         .map(method -> method.compilationInfo.getDeoptTargetMethod())
@@ -965,7 +970,7 @@ public class CompileQueue {
         if (NativeImageOptions.PrintAOTCompilation.getValue()) {
             System.out.println("Compiling " + method.format("%r %H.%n(%p)") + "  [" + reason + "]");
         }
-
+        //System.out.println("hello compile queue");
         try {
             SubstrateBackend backend = config.lookupBackend(method);
 
@@ -988,9 +993,13 @@ public class CompileQueue {
                                 .map(MethodCallTargetNode::invoke)
                                 .filter(invoke -> method.compilationInfo.isDeoptEntry(invoke.bci(), true, false))
                                 .count();
+                
+                //System.out.println("isDeoptTarget: " + method.compilationInfo.isDeoptTarget());
 
                 Suites suites = method.compilationInfo.isDeoptTarget() ? deoptTargetSuites : regularSuites;
                 LIRSuites lirSuites = method.compilationInfo.isDeoptTarget() ? deoptTargetLIRSuites : regularLIRSuites;
+                // Suites suites = deoptTargetSuites;
+                // LIRSuites lirSuites = deoptTargetLIRSuites;
 
                 CompilationResult result = backend.newCompilationResult(compilationIdentifier, method.format("%H.%n(%p)"));
 

@@ -68,7 +68,7 @@ public class SubstrateGraalUtils {
 
     public static CompilationResult doCompile(DebugContext initialDebug, RuntimeConfiguration runtimeConfig, Suites suites, LIRSuites lirSuites, final SubstrateMethod method) {
         updateGraalArchitectureWithHostCPUFeatures(runtimeConfig.lookupBackend(method));
-
+        System.out.println("hellow do compile");
         String methodString = method.format("%H.%n(%p)");
         SubstrateCompilationIdentifier compilationId = new SubstrateCompilationIdentifier();
 
