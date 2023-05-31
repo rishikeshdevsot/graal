@@ -339,6 +339,9 @@ public class NodeLLVMBuilder implements NodeLIRBuilderTool, SubstrateNodeLIRBuil
             if (node instanceof ValueNode) {
                 if (node.toString().contains("Return")) {
                     System.out.println("We process return node in the Value map");
+                    builder.ReturnNode = (ValueNode)node;
+                } else {
+                    builder.ReturnNode = null;
                 }
                 if (!valueMap.containsKey(node)) {
                     ValueNode valueNode = (ValueNode) node;

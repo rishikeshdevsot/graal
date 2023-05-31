@@ -88,6 +88,7 @@ public class LLVMIRBuilder implements AutoCloseable {
     public Block currentBlock = null;
     public boolean checkNode = false;
     public boolean B55 = false;
+    public ValueNode ReturnNode = null;
     private LLVMModuleRef module;
     private LLVMValueRef function;
     public LLVMDIBuilderRef diBuilder;
@@ -1115,6 +1116,14 @@ public class LLVMIRBuilder implements AutoCloseable {
 
     public void buildRet(LLVMValueRef value) {
         LLVM.LLVMBuildRet(builder, value);
+    }
+
+    public LLVMValueRef buildRetDebug(LLVMValueRef value) {
+        return LLVM.LLVMBuildRet(builder, value);
+    }
+
+    public LLVMValueRef buildRetVoidDebug() {
+        return LLVM.LLVMBuildRetVoid(builder);
     }
 
     public void buildBranch(LLVMBasicBlockRef block) {

@@ -1069,6 +1069,7 @@ public class LLVMGenerator implements LIRGeneratorTool, SubstrateLIRGenerator {
 
     @Override
     public void emitReturn(JavaKind javaKind, Value input) {
+        LLVMValueRef instr;
         if (javaKind == JavaKind.Void) {
             debugInfoPrinter.printRetVoid();
             if (LLVMOptions.ReturnSpecialRegs.getValue() && !isEntryPoint) {
@@ -1082,9 +1083,9 @@ public class LLVMGenerator implements LIRGeneratorTool, SubstrateLIRGenerator {
                 for (int i = 0; i < retValues.length; ++i) {
                     retStruct = builder.buildInsertValue(retStruct, i, retValues[i]);
                 }
-                builder.buildRet(retStruct);
+                instr = builder.buildRetDebug(retStruct);
             } else {
-                builder.buildRetVoid();
+                instr = builder.buildRetVoidDebug();
             }
         } else {
             debugInfoPrinter.printRet(javaKind, input);
@@ -1122,7 +1123,14 @@ public class LLVMGenerator implements LIRGeneratorTool, SubstrateLIRGenerator {
                 }
                 retVal = retStruct;
             }
-            builder.buildRet(retVal);
+            instr = builder.buildRetDebug(retVal);
+        }
+
+        if (builder.ReturnNode != null) {
+            System.out.println("Success get the result");
+            builder.buildDebugInfoForInstr(builder.ReturnNode, instr);
+        } else {
+            System.out.println("Sth is really wrong");
         }
     }
 
