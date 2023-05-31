@@ -1127,10 +1127,10 @@ public class LLVMGenerator implements LIRGeneratorTool, SubstrateLIRGenerator {
         }
 
         if (builder.ReturnNode != null) {
-            System.out.println("Success get the result");
+            //System.out.println("Success get the result");
             builder.buildDebugInfoForInstr(builder.ReturnNode, instr);
         } else {
-            System.out.println("Sth is really wrong");
+            //System.out.println("Sth is really wrong");
         }
     }
 

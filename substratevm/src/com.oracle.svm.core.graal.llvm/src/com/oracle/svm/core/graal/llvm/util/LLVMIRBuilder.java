@@ -1283,7 +1283,7 @@ public class LLVMIRBuilder implements AutoCloseable {
                 String filename = dbgLocInfo.fileName();
                 setBciMetadata(instr, position.getBCI());
                 setLineMetadata(instr, dbgLocInfo.line());
-		// The llvm-link verifier doesn't allow null filenames for subprograms
+		        // The llvm-link verifier doesn't allow null filenames for subprograms
                 if (!filename.equals("")) {
                     String directory = "";
                     if (dbgLocInfo.filePath() != null) {
@@ -1306,8 +1306,9 @@ public class LLVMIRBuilder implements AutoCloseable {
                     }
                     LLVM.LLVMSetCurrentDebugLocation2(builder, diLocation);
                     // Call instructions require the following API call for the debug info to be set corectly, not really sure why
-                    if(LLVM.LLVMIsAInstruction(instr) != null){
-                    //if ((LLVM.LLVMIsACallInst(instr) != null) || (LLVM.LLVMIsAInvokeInst(instr) != null) || (LLVM.LLVMIsABranchInst(instr) != null)) {
+                    //if(LLVM.LLVMIsAInstruction(instr) != null){
+                    if ((LLVM.LLVMIsACallInst(instr) != null) || (LLVM.LLVMIsAInvokeInst(instr) != null) || (LLVM.LLVMIsABranchInst(instr) != null) || 
+                        (LLVM.LLVMIsAReturnInst(instr) != null)  ) {
                         LLVM.LLVMSetInstDebugLocation(builder, instr);
                     }
                     // Check if this llvm instruction corresponds to any local variables declared
