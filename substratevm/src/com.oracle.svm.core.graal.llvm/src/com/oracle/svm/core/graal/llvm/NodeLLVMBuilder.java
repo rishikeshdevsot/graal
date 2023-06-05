@@ -128,7 +128,7 @@ import jdk.vm.ci.meta.Value;
 
 public class NodeLLVMBuilder implements NodeLIRBuilderTool, SubstrateNodeLIRBuilder {
     private final LLVMGenerator gen;
-    private final LLVMIRBuilder builder;
+    public final LLVMIRBuilder builder;
     private final RuntimeConfiguration runtimeConfiguration;
     private final DebugInfoBuilder debugInfoBuilder;
     private ReentrantLock lock1 = new ReentrantLock();
@@ -382,8 +382,9 @@ public class NodeLLVMBuilder implements NodeLIRBuilderTool, SubstrateNodeLIRBuil
         if (SubstrateOptions.GenerateDebugInfo.getValue() > 0) {
             if (block == graph.getLastSchedule().getCFG().getStartBlock()) {
                 builder.createDIFunctionParameters();
+            }else {
+                builder.insertLocalVarDeclarations();
             }
-            builder.insertLocalVarDeclarations();
         }
         processedBlocks.add(block);
     }

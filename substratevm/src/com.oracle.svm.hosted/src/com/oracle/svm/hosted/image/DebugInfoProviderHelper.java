@@ -154,14 +154,14 @@ public class DebugInfoProviderHelper {
     }
 
     public static int getLineNumber(ResolvedJavaMethod method, int bci) {
-        if (method != null) {
-            StackTraceElement ste = method.asStackTraceElement(bci);
-            return ste.getLineNumber();
-        }
-        // LineNumberTable lineNumberTable = method.getLineNumberTable();
-        // if (lineNumberTable != null && bci >= 0) {
-        //     return lineNumberTable.getLineNumber(bci);
+        // if (method != null) {
+        //     StackTraceElement ste = method.asStackTraceElement(bci);
+        //     return ste.getLineNumber();
         // }
+        LineNumberTable lineNumberTable = method.getLineNumberTable();
+        if (lineNumberTable != null && bci >= 0) {
+            return lineNumberTable.getLineNumber(bci);
+        }
         return -1;
     }
 
@@ -211,6 +211,16 @@ public class DebugInfoProviderHelper {
                 nonEmptySortedLocals = Arrays.copyOf(locals, locals.length);
                 Arrays.sort(nonEmptySortedLocals, (Local l1, Local l2) -> l1.getSlot() - l2.getSlot());
             }
+        }
+        return nonEmptySortedLocals;
+    }
+
+    public static Local[] getAllLocalVar(ResolvedJavaMethod method) {
+        LocalVariableTable lvt = method.getLocalVariableTable();
+        Local[] nonEmptySortedLocals = null;
+        if (lvt != null) {
+            //Local[] locals = lvt.getLocalsAt(bci);
+            return lvt.getLocals();
         }
         return nonEmptySortedLocals;
     }

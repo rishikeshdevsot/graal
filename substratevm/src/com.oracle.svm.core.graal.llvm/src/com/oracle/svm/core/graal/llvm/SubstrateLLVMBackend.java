@@ -158,6 +158,7 @@ public class SubstrateLLVMBackend extends SubstrateBackend {
         for (Block b : schedule.getCFG().getBlocks()) {
             nodeBuilder.doBlock(b, graph, schedule.getBlockToNodesMap());
         }
+        nodeBuilder.builder.globalVarListPerBlock.clear();
         nodeBuilder.finish();
     }
 
