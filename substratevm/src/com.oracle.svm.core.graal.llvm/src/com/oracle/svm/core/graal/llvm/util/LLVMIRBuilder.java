@@ -93,7 +93,9 @@ public class LLVMIRBuilder implements AutoCloseable {
     public Block currentBlock = null;
     public boolean checkNode = false;
     public boolean B55 = false;
+    public ValueNode CurrNode = null;
     public ValueNode ReturnNode = null;
+    public ValueNode AddNode = null;
     private LLVMModuleRef module;
     private LLVMValueRef function;
     public LLVMDIBuilderRef diBuilder;
@@ -445,6 +447,7 @@ public class LLVMIRBuilder implements AutoCloseable {
 
             LLVMValueRef llvmParam = getFunctionParam(paramIndex);
             LLVMValueRef paramAlloca = createEntryBlockAlloca(typeOf(llvmParam), paramName);
+            setSpecialRegCountMetadata(paramAlloca, LLVMGenerator.SpecialRegister.count() + 1);
 
             // (paramIndex + 1) because the llvm documentation states that index starts at 1.
             LLVMMetadataRef diParamVariable = LLVM.LLVMDIBuilderCreateParameterVariable(diBuilder, this.diSubProgram, paramName,
@@ -493,6 +496,8 @@ public class LLVMIRBuilder implements AutoCloseable {
 
             LLVMValueRef llvmParam = getFunctionParam(paramIndex);
             LLVMValueRef paramAlloca = createEntryBlockAlloca(typeOf(llvmParam), paramName);
+
+            //setSpecialRegCountMetadata(paramAlloca, LLVMGenerator.SpecialRegister.count() + 1);
 
             // (paramIndex + 1) because the llvm documentation states that index starts at 1.
             LLVMMetadataRef diParamVariable = LLVM.LLVMDIBuilderCreateParameterVariable(diBuilder, this.diSubProgram, paramName,
@@ -1554,7 +1559,10 @@ public class LLVMIRBuilder implements AutoCloseable {
                 long[] nullopt = {};
                 LLVMMetadataRef expr = LLVM.LLVMDIBuilderCreateExpression(diBuilder, nullopt, nullopt.length);
                 //setVarNameMetadata(varInfo.instr, varInfo.varName);
-                //LLVM.LLVMDIBuilderInsertDeclareAtEnd(diBuilder, varInfo.instr, varInfo.diLocalVariable, expr, varInfo.diLocation, LLVM.LLVMGetInsertBlock(builder));
+                // if (LLVM.LLVMIsAConstant(varInfo.instr) != null) {
+                //     LLVM.LLVMDIBuilderInsertDeclareAtEnd(diBuilder, varInfo.instr, varInfo.diLocalVariable, expr, varInfo.diLocation, LLVM.LLVMGetInsertBlock(builder));
+                //     continue;
+                // }
                 //LLVM.LLVMDIBuilderInsertDeclareBefore(diBuilder, varInfo.instr, varInfo.diLocalVariable, expr, varInfo.diLocation, localVarListPerBlock.get(varInfo));
                 if (instToVarNames.containsKey(varInfo.instr)) {
                     String newVarNames = instToVarNames.get(varInfo.instr) + varInfo.varName + " ";
@@ -1649,6 +1657,13 @@ public class LLVMIRBuilder implements AutoCloseable {
 	    String kindID = "bci";
 	    // LLVMMetadataRef bciNode = LLVM.LLVMDIBuilderCreateConstantValueExpression(diBuilder, bci);
 	    setMetadata(instr, kindID, LLVM.LLVMMetadataAsValue(context, bciNode));
+    }
+
+    public void setSpecialRegCountMetadata(LLVMValueRef instr, int specialReg) {
+	    LLVMMetadataRef specialRegNode = LLVM.LLVMMDStringInContext2(context, String.valueOf(specialReg), String.valueOf(specialReg).length());
+	    String kindID = "specialReg";
+	    // LLVMMetadataRef bciNode = LLVM.LLVMDIBuilderCreateConstantValueExpression(diBuilder, bci);
+	    setMetadata(instr, kindID, LLVM.LLVMMetadataAsValue(context, specialRegNode));
     }
 
     public void setVarNameMetadata(LLVMValueRef instr, String varName) {

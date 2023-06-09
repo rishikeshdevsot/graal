@@ -1126,12 +1126,8 @@ public class LLVMGenerator implements LIRGeneratorTool, SubstrateLIRGenerator {
             instr = builder.buildRetDebug(retVal);
         }
 
-        if (builder.ReturnNode != null) {
-            //System.out.println("Success get the result");
-            builder.buildDebugInfoForInstr(builder.ReturnNode, instr);
-        } else {
-            //System.out.println("Sth is really wrong");
-        }
+        if (builder.CurrNode.toString().contains("Return"))
+            builder.buildDebugInfoForInstr(builder.CurrNode, instr);
     }
 
     @Override
@@ -1429,6 +1425,8 @@ public class LLVMGenerator implements LIRGeneratorTool, SubstrateLIRGenerator {
         @Override
         public Value emitAdd(Value a, Value b, boolean setFlags) {
             LLVMValueRef add = builder.buildAdd(getVal(a), getVal(b));
+            if (builder.CurrNode.toString().contains("+"))
+                builder.buildDebugInfoForInstr(builder.CurrNode, add);
             return new LLVMVariable(add);
         }
 

@@ -45,6 +45,7 @@ import org.graalvm.compiler.debug.DebugContext;
 import org.graalvm.compiler.debug.GraalError;
 import static org.graalvm.compiler.debug.GraalError.shouldNotReachHere;
 import static org.graalvm.compiler.debug.GraalError.unimplemented;
+import org.graalvm.compiler.nodeinfo.Verbosity;
 import org.graalvm.compiler.graph.GraalGraphError;
 import org.graalvm.compiler.graph.Node;
 import org.graalvm.compiler.graph.NodeInputList;
@@ -181,7 +182,7 @@ public class NodeLLVMBuilder implements NodeLIRBuilderTool, SubstrateNodeLIRBuil
         boolean checkNode = false;
         if (block.toString().contains("B55")) builder.B55 = true;
         else builder.B55 = false;
-        if (graph.toString().contains("org.apache.hadoop.hdfs.server.blockmanagement.BlockPlacementPolicyDefault.chooseRandom")) {
+        if (graph.toString().contains("org.apache.hadoop.hdfs.server.blockmanagement.BlockPlacementPolicyDefault.chooseRandom -> HotSpotMethod<BlockPlacementPolicyDefault.chooseRandom(int, String, Set, long, int, List, boolean, StorageType)")) {
             // System.out.println("\n Printing in doBlock");
             // System.out.println("Found target " + graph);
             // System.out.println("This block is " + block);
@@ -196,7 +197,7 @@ public class NodeLLVMBuilder implements NodeLIRBuilderTool, SubstrateNodeLIRBuil
         builder.currentBlock = block;
         if (block == graph.getLastSchedule().getCFG().getStartBlock()) {
             assert block.getPredecessorCount() == 0;
-            if(block.toString().contains("B55") && checkNode) {
+            if(checkNode) {
                 System.out.println("checkpoint if getStartBlock()" );
             }
 
@@ -220,7 +221,7 @@ public class NodeLLVMBuilder implements NodeLIRBuilderTool, SubstrateNodeLIRBuil
 
             gen.getDebugInfoPrinter().printFunction(graph, this);
         } else {
-            if(block.toString().contains("B55") && checkNode) {
+            if(checkNode) {
                 System.out.println("checkpoint else getStartBlock()" );
             }
             assert block.getPredecessorCount() > 0;
@@ -288,12 +289,10 @@ public class NodeLLVMBuilder implements NodeLIRBuilderTool, SubstrateNodeLIRBuil
                     LLVMValueRef[] incomingValues = forwardPhis.toArray(new LLVMValueRef[0]);
                     LLVMBasicBlockRef[] incomingBlocks = forwardBlocks.toArray(new LLVMBasicBlockRef[0]);
                     LLVMValueRef phi = builder.buildPhi(phiType, incomingValues, incomingBlocks);
-                    if (block.toString().contains("B55") && checkNode) {
-                        System.out.println("enter here means that phiNode is not 127|merge, it is: " + phiNode);
+                    if (checkNode) {
+                        System.out.println("enter here means that phiNode is: " + phiNode);
                     }
-                    if (phiNode.toString().contains("127|Merge") && block.toString().contains("B55") && checkNode) {
-                        System.out.println("Process merge node in buildPhi 2" );
-                    }
+
 
                     if (hasBackwardIncomingEdges) {
                         backwardsPhi.put(phiNode, phi);
@@ -323,6 +322,10 @@ public class NodeLLVMBuilder implements NodeLIRBuilderTool, SubstrateNodeLIRBuil
         // }
         for (Node node : blockMap.get(block)) {
             if (checkNode) {
+                if (node instanceof FrameState ) {
+                    Verbosity verbostiy = Verbosity.Debugger;
+                    System.out.println("The frame state node is: " + node.toString(verbostiy));
+                }
                 NodeSourcePosition pos = node.getNodeSourcePosition();
                 if (pos == null) {
                     System.out.println("Printing in doBlock \n" + "Graph: " + graph +"\n" 
@@ -337,12 +340,16 @@ public class NodeLLVMBuilder implements NodeLIRBuilderTool, SubstrateNodeLIRBuil
                 System.out.println("\n");
             }
             if (node instanceof ValueNode) {
-                if (node.toString().contains("Return")) {
-                    //System.out.println("We process return node in the Value map");
-                    builder.ReturnNode = (ValueNode)node;
-                } else {
-                    builder.ReturnNode = null;
-                }
+                builder.CurrNode = (ValueNode)node;
+                // if (node.toString().contains("Return")) {
+                //     //System.out.println("We process return node in the Value map");
+                //     builder.ReturnNode = (ValueNode)node;
+                // } else if (node.toString().contains("+")) {
+                //     builder.AddNode = (ValueNode)node;
+                // }else {
+                //     builder.ReturnNode = null;
+                //     builder.AddNode = null;
+                // }
                 if (!valueMap.containsKey(node)) {
                     ValueNode valueNode = (ValueNode) node;
                     try {
@@ -588,6 +595,9 @@ public class NodeLLVMBuilder implements NodeLIRBuilderTool, SubstrateNodeLIRBuil
 
     @Override
     public void emitInvoke(Invoke i) {
+        if (builder.checkNode) {
+            System.out.println("emit invoke is called");
+        }
         LoweredCallTargetNode callTarget = (LoweredCallTargetNode) i.callTarget();
         ResolvedJavaMethod targetMethod = callTarget.targetMethod();
         NodeInputList<ValueNode> arguments = callTarget.arguments();
@@ -633,6 +643,9 @@ public class NodeLLVMBuilder implements NodeLIRBuilderTool, SubstrateNodeLIRBuil
 
 
         if (!isVoid) {
+            if (builder.checkNode) {
+                System.out.println("emit invoke not isVoid");
+            }
 //            LLVMMetadataRef mdString = builder.testString(builder.constantString("test2 more and more"));
 //            builder.setMetadata(call, "kind1", mdString);
             setResult(i.asNode(), call);
@@ -663,6 +676,9 @@ public class NodeLLVMBuilder implements NodeLIRBuilderTool, SubstrateNodeLIRBuil
     }
 
     private LLVMValueRef emitCall(Invoke invoke, LoweredCallTargetNode callTarget, LLVMValueRef callee, long patchpointId, LLVMValueRef... args) {
+        if (builder.checkNode) {
+            System.out.println("emit call is called");
+        }
         boolean nativeABI = ((SubstrateCallingConventionType) callTarget.callType()).nativeABI;
         if (!SubstrateBackend.hasJavaFrameAnchor(callTarget)) {
             assert SubstrateBackend.getNewThreadStatus(callTarget) == VMThreads.StatusSupport.STATUS_ILLEGAL;
@@ -703,6 +719,9 @@ public class NodeLLVMBuilder implements NodeLIRBuilderTool, SubstrateNodeLIRBuil
 
     private LLVMValueRef emitCallInstruction(Invoke invoke, boolean nativeABI, LLVMValueRef callee, long patchpointId, LLVMValueRef... args) {
         LLVMValueRef call;
+        if (builder.checkNode) {
+            System.out.println("emit call instruction is called");
+        }
         if (invoke instanceof InvokeWithExceptionNode) {
             InvokeWithExceptionNode invokeWithExceptionNode = (InvokeWithExceptionNode) invoke;
             LLVMBasicBlockRef successor = gen.getBlock(invokeWithExceptionNode.next());
@@ -921,6 +940,9 @@ public class NodeLLVMBuilder implements NodeLIRBuilderTool, SubstrateNodeLIRBuil
         gen.getDebugInfoPrinter().setValueName(llvmOperand, node);
         
         if (SubstrateOptions.GenerateDebugInfo.getValue() > 0) {
+            if (builder.checkNode) {
+                System.out.println("SubstrateOptions.GenerateDebugInfo.getValue() > 0");
+            }
             LLVMValueRef instr = llvmOperand.get();
             builder.buildDebugInfoForInstr(node, instr);
         }
