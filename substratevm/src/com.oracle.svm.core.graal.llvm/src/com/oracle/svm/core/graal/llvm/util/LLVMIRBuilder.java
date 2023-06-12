@@ -96,6 +96,9 @@ public class LLVMIRBuilder implements AutoCloseable {
     public ValueNode CurrNode = null;
     public ValueNode ReturnNode = null;
     public ValueNode AddNode = null;
+    public static HashMap<ValueNode, String> valueNodeToVarNameMap = 
+        new HashMap<ValueNode, String>();
+
     private LLVMModuleRef module;
     private LLVMValueRef function;
     public LLVMDIBuilderRef diBuilder;
@@ -1470,7 +1473,13 @@ public class LLVMIRBuilder implements AutoCloseable {
 
             LLVMMetadataRef diFile = LLVM.LLVMDIScopeGetFile(subProgram);
             LLVMMetadataRef localDIType = getDiType(localVar.getType().getName());
-            String varName = localVar.getName();
+            
+            //String varName = localVar.getName();
+            String varName = "null";
+            if (valueNodeToVarNameMap.containsKey(node)) {
+                varName = valueNodeToVarNameMap.get(node);
+            }
+
             LLVMMetadataRef diLocalVariable = LLVM.LLVMDIBuilderCreateAutoVariable(diBuilder, subProgram, varName,
                     varName.length(), diFile, lineNum, localDIType, 0, 0, 0);
             DILocalVarInfo varInfo = new DILocalVarInfo(varName, instr, diLocalVariable, diLocation);
@@ -1599,6 +1608,12 @@ public class LLVMIRBuilder implements AutoCloseable {
                 }
             System.out.println("\n\n");
         }
+        if (valueNodeToVarNameMap.containsKey(node)) {
+            //varName = valueNodeToVarNameMap.get(node);
+            setVarNameMetadata(instr, valueNodeToVarNameMap.get(node));
+            System.out.println("Successfully inserted node using frame state: " + node);
+        }
+
         // If the subprogram is null, the debuginfo inside the function is ignored.
         if (this.diSubProgram != null) {
             if ((position != null)) {

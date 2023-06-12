@@ -40,4 +40,8 @@ public class BlockMap<T> {
     public void put(AbstractBlockBase<?> block, T value) {
         data[block.getId()] = value;
     }
+
+    public int size() {
+        return data.length;
+    }
 }

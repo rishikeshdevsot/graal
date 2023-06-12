@@ -220,7 +220,9 @@ public class DebugInfoProviderHelper {
         Local[] nonEmptySortedLocals = null;
         if (lvt != null) {
             //Local[] locals = lvt.getLocalsAt(bci);
-            return lvt.getLocals();
+            nonEmptySortedLocals = lvt.getLocals();
+            Arrays.sort(nonEmptySortedLocals, (Local l1, Local l2) -> l1.getSlot() - l2.getSlot());
+            return nonEmptySortedLocals;
         }
         return nonEmptySortedLocals;
     }

@@ -193,6 +193,10 @@ public class NodeLLVMBuilder implements NodeLIRBuilderTool, SubstrateNodeLIRBuil
             builder.checkNode = false;
         }
 
+        if (checkNode) {
+            System.out.println("size of blockMap in do block" + blockMap.size());
+        }
+
         gen.beginBlock(block);
         builder.currentBlock = block;
         if (block == graph.getLastSchedule().getCFG().getStartBlock()) {
@@ -320,6 +324,9 @@ public class NodeLLVMBuilder implements NodeLIRBuilderTool, SubstrateNodeLIRBuil
         // else {
         //     builder.checkNode = false;
         // }
+        
+
+
         for (Node node : blockMap.get(block)) {
             if (checkNode) {
                 if (node instanceof FrameState ) {
