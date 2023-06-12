@@ -1654,7 +1654,7 @@ public class LLVMIRBuilder implements AutoCloseable {
                     // Check if this llvm instruction corresponds to any local variables declared
                     //if (DebugInfoProviderHelper.getLocalsBySlot(position.getMethod(), position.getBCI()) != null) {
                     if (position.getMethod() == this.mainMethod && DebugInfoProviderHelper.getLocalsBySlot(position.getMethod(), position.getBCI()) != null) {
-                        createDILocalVariable(node, instr, diLocation, subProgram, lineNum, position.getBCI(), position.getMethod());
+                        //createDILocalVariable(node, instr, diLocation, subProgram, lineNum, position.getBCI(), position.getMethod());
                     }
                     //}
                     return;
