@@ -239,7 +239,7 @@ public class SubstrateLLVMBackend extends SubstrateBackend {
             int index = 0;
             boolean inserted = false;
             
-            if (checkNode) {
+            if (localVars != null) {
                 // index based isn't working, require slot chekcing
                 for (Local local : localVars) {
                     if (local.getSlot() == (i)) {
@@ -259,6 +259,11 @@ public class SubstrateLLVMBackend extends SubstrateBackend {
                 }
                 if (inserted) {
                     //localVars.remove(index);
+                    // ugly way to remove the inserted var name
+                    // As we are processing the node following the line number order
+                    // the uses of the slot in the local variable table shall also follow such manner
+                    // Once a varname is used, we delete from the localVar array as it won't be used 
+                    // again due to its inverse one to one mapping nature
                     Local[] newLocalVars = new Local[localVars.length - 1];
                     System.arraycopy(localVars, 0, newLocalVars, 0, index);
                     System.arraycopy(localVars, index + 1,
@@ -307,7 +312,6 @@ public class SubstrateLLVMBackend extends SubstrateBackend {
         for (Block block : scheduledBlocks) {
             BlockMap<List<Node>> blockMap = schedule.getBlockToNodesMap();
             for (Node node : blockMap.get(block)) {
-                //idToNodeMap.put(node.getId(), node);
                 if (node instanceof FrameState ) {
                     FrameState fs = (FrameState) node;
                     ArrayList<ValueNode> localVariableArray = new ArrayList<>();
@@ -318,14 +322,7 @@ public class SubstrateLLVMBackend extends SubstrateBackend {
                             localVariableArray.add(fs.localAt(i));
                         }
                     }
-                    // if (checkNode) {
-                    //     Verbosity verbostiy = Verbosity.Debugger;
-                    //     System.out.println(
-                    //         "The line number to this frame state is " + fs.getCode().asStackTraceElement(fs.bci).getLineNumber()
-                    //     );
-                    //     System.out.println("The frame state node is: " + node.toString(verbostiy));
 
-                    // }
                     lineNumberToVarArrayMap.put(fs.getCode().asStackTraceElement(fs.bci).getLineNumber() ,localVariableArray);
                 }
             }
@@ -344,23 +341,18 @@ public class SubstrateLLVMBackend extends SubstrateBackend {
         if (firstEntry != null) {
             ArrayList<ValueNode> firstValue = firstEntry.getValue();
             for (int i = 0; i < firstValue.size(); i ++) {
-                //if (firstValue.get(i) instanceof ParameterNode) {
                 if (firstValue.get(i) != null) {
                     count ++;
                     if (checkNode) {
                         System.out.println("parameter node is: " + firstValue.get(i));
                     }
                 }
-                //}
             }
             if (checkNode) {
                 System.out.println("count is: " + count);
             }
         }
-        //}
 
-
-        
         if (checkNode) {
             ArrayList<ValueNode> varArrayPrev = new ArrayList<>();
             ArrayList<Boolean> processedSlot = new ArrayList<>();
@@ -378,70 +370,7 @@ public class SubstrateLLVMBackend extends SubstrateBackend {
                 varArrayPrev = lineNumberToVarArrayMap.get(i);
             }
         }
-
-        // if (checkNode) {
-        //     for (int i = 0; i <  lineNumberToVarArrayMap.size() - 1; i ++) {
-
-        //         StringBuilder sb_local1 = new StringBuilder();
-        //         sb_local1.append("locals: [");
-        //         ArrayList<ValueNode> varArray1 = lineNumberToVarArrayMap.get(i);
-        //         for (int j = 0; j < varArray1.size(); j++) {
-        //             sb_local1.append(j == 0 ? "" : ", ").append(varArray1.get(j) == null ? "_" : varArray1.get(j).toString(Verbosity.Id));
-        //         }
-        //         sb_local1.append("]").append(nl);
-        //         System.out.println("line number is: " + i + "\n and " + sb_local1.toString() );
-                
-        //         ArrayList<ValueNode> diffArray = compareLocalVarDelta(
-        //             lineNumberToVarArrayMap.get(i), lineNumberToVarArrayMap.get(i + 1)
-        //         );
-        //         StringBuilder sb = new StringBuilder();
-        //         sb.append("diffs: [");
-        //         for (int j = 0; j < diffArray.size(); j++) {
-        //             sb.append(j == 0 ? "" : ", ").append(diffArray.get(j) == null ? "_" : diffArray.get(j).toString(Verbosity.Id));
-        //         }
-        //         sb.append("]").append(nl);
-        //         System.out.println("line number is: " + i + "\n and " + sb.toString() );
-
-
-        //         StringBuilder sb_local2 = new StringBuilder();
-        //         sb_local2.append("locals: [");
-        //         ArrayList<ValueNode> varArray2 = lineNumberToVarArrayMap.get(i + 1);
-        //         for (int j = 0; j < varArray2.size(); j++) {
-        //             sb_local2.append(j == 0 ? "" : ", ").append(varArray2.get(j) == null ? "_" : varArray2.get(j).toString(Verbosity.Id));
-        //         }
-        //         sb_local2.append("]").append(nl);
-        //         System.out.println("line number is: " + (i + 1) + "\n and " + sb_local2.toString() );
-                
-        //     }
-        // }
-
-
-        // ArrayList<ValueNode> localVariablePrev = new ArrayList<>();
-        // for (Block block : schedule.getCFG().getBlocks()) {
-        //     for (Node node : blockMap.get(block)) {
-        //         if (node instanceof FrameState ) {
-        //             FrameState fs = (FrameState) node;
-        //             ArrayList<ValueNode> localVariableCurr = new ArrayList<>();
-        //             for (int i = 0; i < fs.localsSize(); i++) {
-        //                 if (fs.localAt(i) == null ) {
-        //                     localVariableCurr.add(fs.localAt(-1));
-        //                 } else {
-        //                     localVariableCurr.add(fs.localAt(i));
-        //                 }
-        //             }
-        //             ArrayList<ValueNode> diffHandlerArray = compareLocalVarDelta(
-        //                 localVariablePrev, localVariableCurr
-        //             );
-
-        //             for (int i = 0; i < diffHandlerArray.size(); i ++) {
-        //                 handleDiff(diffHandlerArray.get(i));
-        //             }
-
-        //             localVariablePrev = localVariableCurr;
-
-        //         }
-        //     }
-        // }
+        
 
         nodeBuilder.builder.valueNodeToVarNameMap = valueNodeToVarNameMap;
 
