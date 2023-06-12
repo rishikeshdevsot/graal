@@ -1611,7 +1611,9 @@ public class LLVMIRBuilder implements AutoCloseable {
         if (valueNodeToVarNameMap.containsKey(node)) {
             //varName = valueNodeToVarNameMap.get(node);
             setVarNameMetadata(instr, valueNodeToVarNameMap.get(node));
-            System.out.println("Successfully inserted node using frame state: " + node);
+            if (checkNode) {
+                System.out.println("Successfully inserted node using frame state: " + node);
+            }
         }
 
         // If the subprogram is null, the debuginfo inside the function is ignored.
