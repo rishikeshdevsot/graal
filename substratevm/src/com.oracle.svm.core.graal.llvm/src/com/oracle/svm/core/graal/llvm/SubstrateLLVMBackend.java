@@ -42,6 +42,7 @@ import java.util.Map;
 import java.util.Iterator;
 import com.oracle.svm.hosted.image.DebugInfoProviderHelper;
 import jdk.vm.ci.meta.Local;
+import java.util.TreeMap;
 
 
 import com.oracle.svm.hosted.image.sources.SourceManager;
@@ -84,14 +85,11 @@ public class SubstrateLLVMBackend extends SubstrateBackend {
     private static final TimerKey BackEnd = DebugContext.timer("BackEnd").doc("Time spent in EmitLLVM and Populate.");
     //TODO: Avoid this lock if possible
     private ReentrantLock imageSingletonesLock = new ReentrantLock();
-    private static Local[] localVars = null;
+    //private static Local[] localVars = null;
 
     //private static HashMap<Integer, Node> idToNodeMap = new HashMap<Integer, Node>();
-    private static HashMap<Integer, ArrayList<ValueNode>> lineNumberToVarArrayMap = 
-        new HashMap<Integer, ArrayList<ValueNode>>();
     private static boolean checkNode = false;
-    private static HashMap<ValueNode, String> valueNodeToVarNameMap = 
-        new HashMap<ValueNode, String>();
+
 
     public SubstrateLLVMBackend(Providers providers) {
         super(providers);
@@ -190,13 +188,42 @@ public class SubstrateLLVMBackend extends SubstrateBackend {
                 processedSlot.add(false);
             return localVariablePrev;
         }
+
+        // looks like Java only enables assert when -ea switch (enable assertion)
+        // is toggled, the below lines are not functioning at all
         assert localVariablePrev.size() == localVariableCurr.size();
+        assert localVariableCurr.size() == processedSlot.size();
+
+        ArrayList<ValueNode> emptyDiff = new ArrayList<>();
+        // I don't understand why this if statement happens, will just return the empty
+        // update, after moving two map declared in member variable, this ridiculous condition disappear
+        // must be some multi-threading issue, but why, I have locks !!!
+        if (localVariablePrev.size() != localVariableCurr.size()) {
+            System.out.println("size are not equal");
+            checkNode = true;
+            printLocalVar(localVariablePrev, 0, 0);
+            printLocalVar(localVariableCurr, 0, 0);
+            checkNode = false;
+            return emptyDiff;
+        }
+
+        // same as above, no idea why this if statement is invoked
+        if (localVariablePrev.size() != processedSlot.size()) {
+            System.out.println("processSlot size are not equal");
+            checkNode = true;
+            printLocalVar(localVariablePrev, 0, 0);
+            System.out.println("processedSlot siez is: " + processedSlot.size());
+            //printLocalVar(localVariableCurr, 0, 0);
+            checkNode = false;
+            return emptyDiff;
+        }
         
         ArrayList<ValueNode> temp = new ArrayList<>();
         for (int i = 0; i < localVariablePrev.size(); i ++) {
             
             if (i > count && 
-                localVariablePrev.get(i) != localVariableCurr.get(i) &&
+                localVariablePrev.get(i) != 
+                localVariableCurr.get(i) &&
                 processedSlot.get(i) == false
             ) {
                 // this implies that 
@@ -222,7 +249,12 @@ public class SubstrateLLVMBackend extends SubstrateBackend {
         return temp;
     }
 
-    private static void handleDiff(ArrayList<ValueNode> diffNode, ArrayList<Boolean> processedSlot) {
+    private static void handleDiff(
+            ArrayList<ValueNode> diffNode, 
+            ArrayList<Boolean> processedSlot, 
+            HashMap<ValueNode, String> valueNodeToVarNameMap,
+            Local[] localVars
+    ) {
         for (int i = 0; i < diffNode.size(); i ++) {
             if (diffNode.get(i) == null) {
                 continue;
@@ -232,6 +264,9 @@ public class SubstrateLLVMBackend extends SubstrateBackend {
                 continue;
             }
 
+            // constant node does not represent any instruction in LLVM, we skip it until it is initialized
+            // by some control flow logic such that we can map it in the LLVM IR (and being able to traversed
+            // by the use-def chain)
             if (diffNode.get(i).toString().contains("Constant")) {
                 continue;
             }
@@ -243,11 +278,13 @@ public class SubstrateLLVMBackend extends SubstrateBackend {
                 // index based isn't working, require slot chekcing
                 for (Local local : localVars) {
                     if (local.getSlot() == (i)) {
-                        System.out.println(
-                            "The slot in diff array is: " + i + " " +
-                            "The processed Node is: " + diffNode.get(i) + "\n" +
-                            "Its name is " + local.getName() + "\n"
-                        );
+                        if (checkNode) {
+                            System.out.println(
+                                "The slot in diff array is: " + i + " " +
+                                "The processed Node is: " + diffNode.get(i) + "\n" +
+                                "Its name is " + local.getName() + "\n"
+                            );
+                        }
                         valueNodeToVarNameMap.put(diffNode.get(i), local.getName());
                         processedSlot.set(i, true);
                         // remove from the local variable table once we inserted to the map
@@ -275,7 +312,8 @@ public class SubstrateLLVMBackend extends SubstrateBackend {
         }
     }
 
-    private static void printLocalVar(ArrayList<ValueNode> varArray, int i, int a ) {
+    private static void printLocalVar(ArrayList<ValueNode> varArray, int i, int a) {
+        if (!checkNode) return;
         if (varArray.isEmpty()) return;
         StringBuilder sb = new StringBuilder();
         String nl = CodeUtil.NEW_LINE;
@@ -289,6 +327,15 @@ public class SubstrateLLVMBackend extends SubstrateBackend {
     }
 
     private static void generate(NodeLLVMBuilder nodeBuilder, StructuredGraph graph) {
+        // my lock is added only in between generate function call; however, this is declared
+        // as the member variable in the class. So there will be data race when multiple thread 
+        // access these two vars
+        HashMap<Integer, ArrayList<ValueNode>> lineNumberToVarArrayMap = 
+            new HashMap<Integer, ArrayList<ValueNode>>();
+        HashMap<ValueNode, String> valueNodeToVarNameMap = 
+            new HashMap<ValueNode, String>();
+        //boolean checkNode = false;
+        Local[] localVars = null;
         // map definition point node to the variable declacred
         if (graph.toString().contains("org.apache.hadoop.hdfs.server.blockmanagement.BlockPlacementPolicyDefault.chooseRandom -> HotSpotMethod<BlockPlacementPolicyDefault.chooseRandom(int, String, Set, long, int, List, boolean, StorageType)")) {
             checkNode = true;
@@ -328,12 +375,15 @@ public class SubstrateLLVMBackend extends SubstrateBackend {
             }
         } 
 
+        // sort 
+        TreeMap<Integer, ArrayList<ValueNode>> sortedMap = new TreeMap<>(lineNumberToVarArrayMap);
+
         // calculate argument, assume first frame state list all arguments
         // we do not care the delta of these arguments
         // if (checkNode) {
         Map.Entry<Integer, ArrayList<ValueNode>> firstEntry = null;
         Iterator<Map.Entry<Integer, ArrayList<ValueNode>>> iterator = 
-            lineNumberToVarArrayMap.entrySet().iterator();
+            sortedMap.entrySet().iterator();
         if (iterator.hasNext()) {
             firstEntry = iterator.next();
         }
@@ -353,23 +403,23 @@ public class SubstrateLLVMBackend extends SubstrateBackend {
             }
         }
 
-        if (checkNode) {
-            ArrayList<ValueNode> varArrayPrev = new ArrayList<>();
-            ArrayList<Boolean> processedSlot = new ArrayList<>();
-            for (Integer i : lineNumberToVarArrayMap.keySet()) {
-                printLocalVar(lineNumberToVarArrayMap.get(i), i,  0);
+        
+        ArrayList<ValueNode> varArrayPrev = new ArrayList<>();
+        ArrayList<Boolean> processedSlot = new ArrayList<>();
+        for (Integer i : sortedMap.keySet()) {
+            printLocalVar(sortedMap.get(i), i,  0);
 
-                //diff
-                ArrayList<ValueNode> diffArray = compareLocalVarDelta(
-                    varArrayPrev, lineNumberToVarArrayMap.get(i), count, processedSlot
-                );
-                printLocalVar(diffArray, i,  1);
-                
-                handleDiff(diffArray, processedSlot);
-                
-                varArrayPrev = lineNumberToVarArrayMap.get(i);
-            }
+            //diff
+            ArrayList<ValueNode> diffArray = compareLocalVarDelta(
+                varArrayPrev, sortedMap.get(i), count, processedSlot
+            );
+            printLocalVar(diffArray, i,  1);
+            
+            handleDiff(diffArray, processedSlot, valueNodeToVarNameMap, localVars);
+            
+            varArrayPrev = sortedMap.get(i);
         }
+        
         
 
         nodeBuilder.builder.valueNodeToVarNameMap = valueNodeToVarNameMap;

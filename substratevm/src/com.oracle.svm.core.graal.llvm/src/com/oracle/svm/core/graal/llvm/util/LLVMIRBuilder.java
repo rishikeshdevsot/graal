@@ -1628,7 +1628,9 @@ public class LLVMIRBuilder implements AutoCloseable {
         if (valueNodeToVarNameMap.containsKey(node)) {
             //varName = valueNodeToVarNameMap.get(node);
             setVarNameMetadata(instr, valueNodeToVarNameMap.get(node));
-            System.out.println("Successfully inserted node using frame state: " + node);
+            if (checkNode) {
+                System.out.println("Successfully inserted node using frame state: " + node);
+            }
         }
 
         // If the subprogram is null, the debuginfo inside the function is ignored.
@@ -1671,7 +1673,7 @@ public class LLVMIRBuilder implements AutoCloseable {
                     // Check if this llvm instruction corresponds to any local variables declared
                     //if (DebugInfoProviderHelper.getLocalsBySlot(position.getMethod(), position.getBCI()) != null) {
                     if (position.getMethod() == this.mainMethod && DebugInfoProviderHelper.getLocalsBySlot(position.getMethod(), position.getBCI()) != null) {
-                        createDILocalVariable(node, instr, diLocation, subProgram, lineNum, position.getBCI(), position.getMethod());
+                        //createDILocalVariable(node, instr, diLocation, subProgram, lineNum, position.getBCI(), position.getMethod());
                     }
                     //}
                     return;
