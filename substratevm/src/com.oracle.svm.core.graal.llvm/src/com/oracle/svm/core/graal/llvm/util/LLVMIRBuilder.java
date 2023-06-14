@@ -79,6 +79,7 @@ import com.oracle.svm.shadowed.org.bytedeco.llvm.LLVM.LLVMValueRef;
 import com.oracle.svm.shadowed.org.bytedeco.llvm.global.LLVM;
 import org.graalvm.compiler.debug.DebugContext;
 import org.graalvm.compiler.graph.NodeSourcePosition;
+import org.graalvm.compiler.nodes.InvokeNode;
 import org.graalvm.compiler.nodes.StructuredGraph;
 import org.graalvm.compiler.nodes.ValueNode;
 import org.graalvm.compiler.graph.Node;
@@ -98,6 +99,7 @@ public class LLVMIRBuilder implements AutoCloseable {
     public ValueNode AddNode = null;
     public static HashMap<ValueNode, String> valueNodeToVarNameMap = 
         new HashMap<ValueNode, String>();
+
 
     private LLVMModuleRef module;
     private LLVMValueRef function;
@@ -1597,24 +1599,69 @@ public class LLVMIRBuilder implements AutoCloseable {
             // System.out.println("This block is " + currentBlock);
             NodeSourcePosition pos = node.getNodeSourcePosition();
             if (pos == null) {
-                    System.out.println("Printing in buildDebugInfo \n" + "Graph: " + graph +"\n" 
-                    + "Block:" + this.currentBlock + "\n" + "Node is " + node + " it DOES NOT have source location\n");
-                }else {
-                    System.out.println("Printing in buildDebugInfo \n" + "Graph: " + graph +"\n" 
-                    + "Block:" + this.currentBlock + "\n" + "Node is " + node + "\n" + "pos: " + pos +"\n");
-                    // System.out.println("Node is " + node + " and its bci is: " + pos.getBCI());
-                    // System.out.println("Node source position is " + pos);
+                System.out.println("Printing in buildDebugInfo \n" + "Graph: " + graph +"\n" 
+                + "Block:" + this.currentBlock + "\n" + "Node is " + node + " it DOES NOT have source location");
+            }else {
+                System.out.println("Printing in buildDebugInfo \n" + "Graph: " + graph +"\n" 
+                + "Block:" + this.currentBlock + "\n" + "Node is " + node + "\n" + "pos: " + pos);
+                // System.out.println("Node is " + node + " and its bci is: " + pos.getBCI());
+                // System.out.println("Node source position is " + pos);
 
-                }
-            System.out.println("\n\n");
+            }
+            
         }
+
         if (valueNodeToVarNameMap.containsKey(node)) {
-            //varName = valueNodeToVarNameMap.get(node);
-            setVarNameMetadata(instr, valueNodeToVarNameMap.get(node));
+            String varName = valueNodeToVarNameMap.get(node);
+            setVarNameMetadata(instr, varName);
             if (checkNode) {
-                System.out.println("Successfully inserted node using frame state: " + node);
+                System.out.println(
+                    "Successfully inserted variable name to its definition point using frame state: " + node + "\n" +
+                    " with the variable name to be: " + varName
+                );
             }
         }
+
+        if (node instanceof InvokeNode) {
+            if (checkNode) {
+                InvokeNode invokeNode = (InvokeNode)node;
+                System.out.println("invoke bci is: " + invokeNode.bci());
+                int invokeNodeBCI = invokeNode.bci();
+                LineNumberTable lineNumberTable = this.mainMethod.getLineNumberTable();
+                if (lineNumberTable == null) return;
+                int[] bciInLineNumbertable = lineNumberTable.getBcis();
+                if (bciInLineNumbertable == null) return;
+                int bciOffset = -1;
+                for (int i = 0; i < bciInLineNumbertable.length - 1; i ++) {
+                    int bciOffsetBegin = bciInLineNumbertable[i];
+                    int bciOffsetEnd = bciInLineNumbertable[i + 1];
+
+                    if (invokeNodeBCI >= bciOffsetBegin && invokeNodeBCI < bciOffsetEnd) {
+                        bciOffset = bciOffsetBegin;
+                        break;
+                    }
+                }
+
+                if (bciOffset == -1) {
+                    if (checkNode) {
+                        System.out.println("I don't know why this happens");
+                    }
+                    return;
+                }
+
+                setBciMetadata(instr, invokeNodeBCI);
+                setLineMetadata(instr, lineNumberTable.getLineNumber(bciOffset));
+                if (checkNode) {
+                    System.out.println(
+                        "inserted line number for invoke: " + lineNumberTable.getLineNumber(bciOffset)
+                    );
+                }
+
+            }
+        }
+
+        if (checkNode)
+            System.out.println("\n\n");
 
         // If the subprogram is null, the debuginfo inside the function is ignored.
         if (this.diSubProgram != null) {
