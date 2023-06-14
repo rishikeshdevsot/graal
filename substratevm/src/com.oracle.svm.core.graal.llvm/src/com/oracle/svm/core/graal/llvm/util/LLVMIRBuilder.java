@@ -429,7 +429,24 @@ public class LLVMIRBuilder implements AutoCloseable {
         // Iterate over all the function parameters
         if (DebugInfoProviderHelper.getLocalsBySlot(this.mainMethod, 0) == null) return;
         Local[] localVars = DebugInfoProviderHelper.getLocalsBySlot(this.mainMethod, 0);
-        int index  = 1; // exclude this
+        int index  = 1;
+        // Print for "this"
+        if (!(this.mainMethod.isStatic())) {
+            String paramName = "this";
+            LLVMMetadataRef paramDIType = getDiType(this.mainMethod.getDeclaringClass().getName());
+            LLVMValueRef llvmParam = getFunctionParam(paramIndex - 1);
+            LLVMValueRef paramAlloca = createEntryBlockAlloca(typeOf(llvmParam), paramName);
+            LLVMMetadataRef diParamVariable = LLVM.LLVMDIBuilderCreateParameterVariable(diBuilder, this.diSubProgram, paramName,
+                    paramName.length(), paramIndex, this.diMainFile, 0, paramDIType, 0, 0);
+            LLVMMetadataRef debugLoc = LLVM.LLVMDIBuilderCreateDebugLocation(context, this.methodStartLocation.line(), 0,
+                    this.diSubProgram, null);
+            long[] nullopt = {};
+            LLVMMetadataRef expr = LLVM.LLVMDIBuilderCreateExpression(diBuilder, nullopt, nullopt.length);
+
+            LLVM.LLVMDIBuilderInsertDeclareAtEnd(diBuilder, paramAlloca, diParamVariable, expr, debugLoc, LLVM.LLVMGetInsertBlock(builder));
+            // index++;
+            //paramIndex++; // should I be doing this?
+        }
 
         // parameter is correct: total number of argument mapped to src code
         for (ResolvedJavaMethod.Parameter param : params) {
