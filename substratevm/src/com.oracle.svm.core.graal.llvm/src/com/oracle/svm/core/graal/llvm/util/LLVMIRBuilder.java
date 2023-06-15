@@ -1621,9 +1621,6 @@ public class LLVMIRBuilder implements AutoCloseable {
             }else {
                 System.out.println("Printing in buildDebugInfo \n" + "Graph: " + graph +"\n" 
                 + "Block:" + this.currentBlock + "\n" + "Node is " + node + "\n" + "pos: " + pos);
-                // System.out.println("Node is " + node + " and its bci is: " + pos.getBCI());
-                // System.out.println("Node source position is " + pos);
-
             }
             
         }
@@ -1640,9 +1637,9 @@ public class LLVMIRBuilder implements AutoCloseable {
         }
 
         if (node instanceof InvokeNode) {
-            if (checkNode) {
+            //if (checkNode) {
                 InvokeNode invokeNode = (InvokeNode)node;
-                System.out.println("invoke bci is: " + invokeNode.bci());
+                //System.out.println("invoke bci is: " + invokeNode.bci());
                 int invokeNodeBCI = invokeNode.bci();
                 LineNumberTable lineNumberTable = this.mainMethod.getLineNumberTable();
                 if (lineNumberTable == null) return;
@@ -1666,15 +1663,37 @@ public class LLVMIRBuilder implements AutoCloseable {
                     return;
                 }
 
+                int lineNumber = lineNumberTable.getLineNumber(bciOffset);
+
                 setBciMetadata(instr, invokeNodeBCI);
-                setLineMetadata(instr, lineNumberTable.getLineNumber(bciOffset));
+                setLineMetadata(instr, lineNumber);
                 if (checkNode) {
                     System.out.println(
-                        "inserted line number for invoke: " + lineNumberTable.getLineNumber(bciOffset)
+                        "inserted line number for invoke: " + lineNumber
                     );
                 }
+                DebugContext debugContext = node.getDebug();
+                LLVMDebugInfoProvider.LLVMLocationInfo dbgLocInfo =
+                        dbgInfoProvider.new LLVMLocationInfo(this.mainMethod, invokeNodeBCI, debugContext);
+                String filename = dbgLocInfo.fileName();
+                if (!filename.equals("")) {
+                    String directory = "";
+                    if (dbgLocInfo.filePath() != null) {
+                        directory = dbgLocInfo.filePath().toString();
+                    }
+                    LLVMMetadataRef diFile = getDiFile(filename, directory);
+                    LLVMMetadataRef subProgram = getSubProgram(diFile, this.mainMethod);
+                    LLVMMetadataRef diLocation = LLVM.LLVMDIBuilderCreateDebugLocation(context, lineNumber, invokeNodeBCI,
+                                    subProgram, null);
+                    LLVM.LLVMSetCurrentDebugLocation2(builder, diLocation);
+                    // not debug still 0 without appending this
+                    LLVM.LLVMSetInstDebugLocation(builder, instr);
+                    if (checkNode)
+                        System.out.println("\n");
+                    return;
+                }
 
-            }
+            //}
         }
 
         if (checkNode)
@@ -1715,6 +1734,9 @@ public class LLVMIRBuilder implements AutoCloseable {
                     //if(LLVM.LLVMIsAInstruction(instr) != null){
                     if ((LLVM.LLVMIsACallInst(instr) != null) || (LLVM.LLVMIsAInvokeInst(instr) != null) || (LLVM.LLVMIsABranchInst(instr) != null) || 
                         (LLVM.LLVMIsAReturnInst(instr) != null)  ) {
+                        if (checkNode) {
+                            System.out.println("invoke LLVMSetInstDebugLocation !!!");
+                        }
                         LLVM.LLVMSetInstDebugLocation(builder, instr);
                     }
                     // Check if this llvm instruction corresponds to any local variables declared
