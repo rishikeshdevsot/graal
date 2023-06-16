@@ -1331,117 +1331,8 @@ public class LLVMIRBuilder implements AutoCloseable {
         return subProgram;
     }
 
-    public void createDILocalVariable3(Node node, LLVMValueRef instr, LLVMMetadataRef diLocation, LLVMMetadataRef subProgram,
-                                    int lineNum, int bci, ResolvedJavaMethod method) {
-        // need to relax this constraint                                        
-        if (!node.toString().contains("Constant")) {
-            return;
-        }
-
-        Local[] localVars = DebugInfoProviderHelper.getAllLocalVar(method);
-        for (Local localVar: localVars) {
-            if (checkNode) {
-                System.out.println("the local var is: " + localVar);
-                System.out.println("the local var name is: " + localVar.getName());
-            }
-            // Assuming the start bci of a local variable is where it is first declared
-            LLVMMetadataRef diFile = LLVM.LLVMDIScopeGetFile(subProgram);
-            LLVMMetadataRef localDIType = getDiType(localVar.getType().getName());
-            String varName = localVar.getName();
-            LLVMMetadataRef diLocalVariable = LLVM.LLVMDIBuilderCreateAutoVariable(diBuilder, subProgram, varName,
-                    varName.length(), diFile, lineNum, localDIType, 0, 0, 0);
-            DILocalVarInfo varInfo = new DILocalVarInfo(varName, instr, diLocalVariable, diLocation);
-            if (!localVarListPerBlock.isEmpty()) {
-                for (DILocalVarInfo curVar : this.localVarListPerBlock.keySet()) {
-                    if (curVar.varName.equals(varName)) {
-                        return;
-                    }
-                }
-            } 
-
-            if (!globalVarListPerBlock.contains(varName)) {
-                if (checkNode) {
-                    System.out.println("the local var start bci IN BCI  is: " + localVar.getStartBCI());
-                    //System.out.println("the local var bci IN BCI  is: " + localVar.getBCI());
-                    System.out.println("the local var end bci IN BCI  is: " + localVar.getEndBCI());
-                    System.out.println("the local var IN BCI  is: " + localVar);
-                    System.out.println("the local var name IN BCI is: " + localVar.getName());
-                    System.out.println("the inst in BCI is: " + instr);
-                    System.out.println("the node in BCI is: " + node);
-                    System.out.println("the method in BCI is: " + method);
-                    System.out.println("the lineNum in BCI is: " + lineNum);
-                    System.out.println("the bci in BCI is: " + bci);
-                    System.out.println("Successfully inserted ");
-                }
-                localVarListPerBlock.put(varInfo, instr);
-                globalVarListPerBlock.add(varName);
-            }
-        }
-    
-    }
-
-    public void createDILocalVariable2(Node node, LLVMValueRef instr, LLVMMetadataRef diLocation, LLVMMetadataRef subProgram,
-                                    int lineNum, int bci, ResolvedJavaMethod method) {
-        if ((LLVM.LLVMIsALoadInst(instr) == null)) {
-            return;
-        }
-        Local[] localVars = DebugInfoProviderHelper.getLocalsBySlot(method, bci);
-        Local closestVar = null;
-        int distance = 2147483647;
-        for (Local localVar: localVars) {
-            int localVarDis = Math.abs(localVar.getStartBCI() - bci);
-            if (localVarDis < distance) {
-                distance = localVarDis;
-                closestVar = localVar;
-            }
-        }
-
-        if (closestVar == null || globalVarListPerBlock.contains(closestVar.getName())) {
-            //System.out.println("this might be a corner case");
-            if (checkNode) {
-                //System.out.println("the local var start bci IN BCI  is: " + localVar.getStartBCI());
-                //System.out.println("the local var bci IN BCI  is: " + localVar.getBCI());
-                //System.out.println("the local var end bci IN BCI  is: " + localVar.getEndBCI());
-                //System.out.println("the local var IN BCI  is: " + localVar);
-                //System.out.println("the local var name IN BCI is: " + localVar.getName());
-                System.out.println("the inst in BCI is: " + instr);
-                System.out.println("the node in BCI is: " + node);
-                System.out.println("the method in BCI is: " + method);
-                System.out.println("the lineNum in BCI is: " + lineNum);
-                System.out.println("the bci in BCI is: " + bci);
-                System.out.println("Corner case FAIL ");
-            }
-            return;
-        }
-
-        LLVMMetadataRef diFile = LLVM.LLVMDIScopeGetFile(subProgram);
-        LLVMMetadataRef localDIType = getDiType(closestVar.getType().getName());
-        String varName = closestVar.getName();
-        LLVMMetadataRef diLocalVariable = LLVM.LLVMDIBuilderCreateAutoVariable(diBuilder, subProgram, varName,
-                varName.length(), diFile, lineNum, localDIType, 0, 0, 0);
-        DILocalVarInfo varInfo = new DILocalVarInfo(varName, instr, diLocalVariable, diLocation);
-
-        if (checkNode) {
-            System.out.println("the distance is " + distance);
-
-            System.out.println("the local var start bci IN BCI  is: " + closestVar.getStartBCI());
-            //System.out.println("the local var bci IN BCI  is: " + localVar.getBCI());
-            System.out.println("the local var end bci IN BCI  is: " + closestVar.getEndBCI());
-            System.out.println("the local var IN BCI  is: " + closestVar);
-            System.out.println("the local var name IN BCI is: " + closestVar.getName());
-            System.out.println("the inst in BCI is: " + instr);
-            System.out.println("the node in BCI is: " + node);
-            System.out.println("the method in BCI is: " + method);
-            System.out.println("the lineNum in BCI is: " + lineNum);
-            System.out.println("the bci in BCI is: " + bci);
-            System.out.println("Successfully inserted ");
-        }
-
-        localVarListPerBlock.put(varInfo, instr);
-        globalVarListPerBlock.add(closestVar.getName());
-    
-    } 
-
+    // this function is currently not in use, all local variables information are generated using 
+    // framestate and are inserted at the beginning of the buildDebugInfoForInstr
     public void createDILocalVariable(Node node, LLVMValueRef instr, LLVMMetadataRef diLocation, LLVMMetadataRef subProgram,
                                     int lineNum, int bci, ResolvedJavaMethod method) {
         // we are finding a definition point, if, phi, ret cant be around it
@@ -1449,7 +1340,6 @@ public class LLVMIRBuilder implements AutoCloseable {
             return;
         }
 
-        // if (node.toString.contains("If")) return;
         if (checkNode) {
             System.out.println("the inst in BCI is: " + instr);
             System.out.println("the node in BCI is: " + node);
@@ -1462,7 +1352,6 @@ public class LLVMIRBuilder implements AutoCloseable {
         if (lineNumberTable == null) return;
         int[] bciInLineNumbertable = lineNumberTable.getBcis();
         if (bciInLineNumbertable == null) return;
-        //LineNumber[] lineNumberPairs = lineNumberTable.getLineNumberTable();
         int bciOffset = -1;
         for (int i = 0; i < bciInLineNumbertable.length - 1; i ++) {
             int bciOffsetBegin = bciInLineNumbertable[i];
@@ -1493,11 +1382,7 @@ public class LLVMIRBuilder implements AutoCloseable {
             LLVMMetadataRef diFile = LLVM.LLVMDIScopeGetFile(subProgram);
             LLVMMetadataRef localDIType = getDiType(localVar.getType().getName());
             
-            //String varName = localVar.getName();
-            String varName = "null";
-            if (valueNodeToVarNameMap.containsKey(node)) {
-                varName = valueNodeToVarNameMap.get(node);
-            }
+            String varName = localVar.getName();
 
             LLVMMetadataRef diLocalVariable = LLVM.LLVMDIBuilderCreateAutoVariable(diBuilder, subProgram, varName,
                     varName.length(), diFile, lineNum, localDIType, 0, 0, 0);
@@ -1513,9 +1398,7 @@ public class LLVMIRBuilder implements AutoCloseable {
             if (!globalVarListPerBlock.contains(varName)) {
                 if (checkNode) {
                     System.out.println("the local var bciOffset  is: " + bciOffset);
-
                     System.out.println("the local var start bci IN BCI  is: " + localVar.getStartBCI());
-                    //System.out.println("the local var bci IN BCI  is: " + localVar.getBCI());
                     System.out.println("the local var end bci IN BCI  is: " + localVar.getEndBCI());
                     System.out.println("the local var IN BCI  is: " + localVar);
                     System.out.println("the local var name IN BCI is: " + localVar.getName());
@@ -1533,65 +1416,14 @@ public class LLVMIRBuilder implements AutoCloseable {
 
     }
 
-    public void createDILocalVariable4(Node node, LLVMValueRef instr, LLVMMetadataRef diLocation, LLVMMetadataRef subProgram,
-                                    int lineNum, int bci, ResolvedJavaMethod method) {
-        // if (!node.toString().contains("Constant")) {
-        //     return;
-        // }
-
-        Local[] localVars = DebugInfoProviderHelper.getLocalsBySlot(method, bci);
-        for (Local localVar: localVars) {
-            
-            // Assuming the start bci of a local variable is where it is first declared
-            if ((bci >= localVar.getStartBCI()) || (bci < localVar.getEndBCI())) {
-
-                LLVMMetadataRef diFile = LLVM.LLVMDIScopeGetFile(subProgram);
-                LLVMMetadataRef localDIType = getDiType(localVar.getType().getName());
-                String varName = localVar.getName();
-                LLVMMetadataRef diLocalVariable = LLVM.LLVMDIBuilderCreateAutoVariable(diBuilder, subProgram, varName,
-                        varName.length(), diFile, lineNum, localDIType, 0, 0, 0);
-                DILocalVarInfo varInfo = new DILocalVarInfo(varName, instr, diLocalVariable, diLocation);
-		        if (!localVarListPerBlock.isEmpty()) {
-            		for (DILocalVarInfo curVar : this.localVarListPerBlock.keySet()) {
-                        if (curVar.varName.equals(varName)) {
-                            return;
-                        }
-		            }
-		        } 
-
-                if (!globalVarListPerBlock.contains(varName)) {
-                    if (checkNode) {
-                        System.out.println("the local var start bci IN BCI  is: " + localVar.getStartBCI());
-                        //System.out.println("the local var bci IN BCI  is: " + localVar.getBCI());
-                        System.out.println("the local var end bci IN BCI  is: " + localVar.getEndBCI());
-                        System.out.println("the local var IN BCI  is: " + localVar);
-                        System.out.println("the local var name IN BCI is: " + localVar.getName());
-                        System.out.println("the inst in BCI is: " + instr);
-                        System.out.println("the node in BCI is: " + node);
-                        System.out.println("the method in BCI is: " + method);
-                        System.out.println("the lineNum in BCI is: " + lineNum);
-                        System.out.println("the bci in BCI is: " + bci);
-                        System.out.println("Successfully inserted ");
-                    }
-                    localVarListPerBlock.put(varInfo, instr);
-                    globalVarListPerBlock.add(varName);
-                }
-	        }
-        }
-    }
-
+    // As createDILocalVariable is not used, this function's localVarListPerBlock is empty. Thus, 
+    // disable this function in the invocation.
     public void insertLocalVarDeclarations() {
         if (!localVarListPerBlock.isEmpty()) {
             HashMap<LLVMValueRef, String> instToVarNames = new HashMap<LLVMValueRef, String>();
             for (DILocalVarInfo varInfo : localVarListPerBlock.keySet()) {
                 long[] nullopt = {};
                 LLVMMetadataRef expr = LLVM.LLVMDIBuilderCreateExpression(diBuilder, nullopt, nullopt.length);
-                //setVarNameMetadata(varInfo.instr, varInfo.varName);
-                // if (LLVM.LLVMIsAConstant(varInfo.instr) != null) {
-                //     LLVM.LLVMDIBuilderInsertDeclareAtEnd(diBuilder, varInfo.instr, varInfo.diLocalVariable, expr, varInfo.diLocation, LLVM.LLVMGetInsertBlock(builder));
-                //     continue;
-                // }
-                //LLVM.LLVMDIBuilderInsertDeclareBefore(diBuilder, varInfo.instr, varInfo.diLocalVariable, expr, varInfo.diLocation, localVarListPerBlock.get(varInfo));
                 if (instToVarNames.containsKey(varInfo.instr)) {
                     String newVarNames = instToVarNames.get(varInfo.instr) + varInfo.varName + " ";
                     instToVarNames.replace(varInfo.instr, newVarNames);
@@ -1608,23 +1440,81 @@ public class LLVMIRBuilder implements AutoCloseable {
         }
     }
 
- public void buildDebugInfoForInstr(Node node, LLVMValueRef instr) {
+    private void CreateLLVMNativeDebugMetadata(int bci, ResolvedJavaMethod positionMethod, LLVMValueRef instr, Node node) {
+        ResolvedJavaMethod method = positionMethod != null ? positionMethod : this.mainMethod;
+        DebugContext debugContext = node.getDebug();
+        LLVMDebugInfoProvider.LLVMLocationInfo dbgLocInfo =
+                dbgInfoProvider.new LLVMLocationInfo(method, bci, debugContext);
+        int lineNum = dbgLocInfo.line();
+
+        // customized metadata for better illustration, static analysis always consume LLVM native dbg
+        // metadata for the sake of convinence.
+        setBciMetadata(instr, bci);
+        setLineMetadata(instr, lineNum);
+        if (checkNode) {
+            System.out.println(
+                "inserted bci number : " + bci +
+                " inserted line number : " + lineNum
+            );
+        }
+
+        String filename = dbgLocInfo.fileName();
+        // The llvm-link verifier doesn't allow null filenames for subprograms
+        if (!filename.equals("")) {
+            String directory = "";
+            if (dbgLocInfo.filePath() != null) {
+                directory = dbgLocInfo.filePath().toString();
+            }
+            LLVMMetadataRef diFile = getDiFile(filename, directory);
+            LLVMMetadataRef subProgram = getSubProgram(diFile, method);
+            LLVMMetadataRef diLocation;
+            // The method is inlined
+            if (positionMethod != this.mainMethod) {
+                // TODO: Is it possible to get the location where a method is inlined?
+                LLVMMetadataRef inlinedAt = LLVM.LLVMDIBuilderCreateDebugLocation(context, 0, 0,
+                        this.diSubProgram, null);
+                diLocation = LLVM.LLVMDIBuilderCreateDebugLocation(context, lineNum, bci,
+                        subProgram, inlinedAt);
+            } else {
+                diLocation = LLVM.LLVMDIBuilderCreateDebugLocation(context, lineNum, bci,
+                        subProgram, null);
+            }
+
+            LLVM.LLVMSetCurrentDebugLocation2(builder, diLocation);
+            // Call instructions require the following API call for the debug info to be set corectly, not really sure why
+            // The below are the supported instruction that ensure the correctness of dbg metadata, it is
+            // NOT feasible to handle all instruction at this point
+            if ((LLVM.LLVMIsACallInst(instr) != null) || (LLVM.LLVMIsAInvokeInst(instr) != null) || (LLVM.LLVMIsABranchInst(instr) != null) || 
+                (LLVM.LLVMIsAReturnInst(instr) != null) || LLVM.LLVMIsAExtractValueInst(instr) != null) {
+                if (checkNode) {
+                    System.out.println("invoke LLVMSetInstDebugLocation !!!");
+                }
+                LLVM.LLVMSetInstDebugLocation(builder, instr);
+            }
+            // Check if this llvm instruction corresponds to any local variables declared
+            // This is the old way of creating local variable metadata. Due to its inaccuracies and instability,
+            // we have switched using framestate. However, this approach is what java debugger used. We will just
+            // disable it for now in case something comes up in the future
+            if (positionMethod == this.mainMethod && DebugInfoProviderHelper.getLocalsBySlot(positionMethod, bci) != null) {
+                //createDILocalVariable(node, instr, diLocation, subProgram, lineNum, position.getBCI(), position.getMethod());
+            }
+        }
+    }
+
+    public void buildDebugInfoForInstr(Node node, LLVMValueRef instr) {
         NodeSourcePosition position = node.getNodeSourcePosition();
         if (checkNode) {
-            // System.out.println("\n\n Printing in buildDebugInfoForInstr");
-            // System.out.println("Found target " + graph);
-            // System.out.println("This block is " + currentBlock);
-            NodeSourcePosition pos = node.getNodeSourcePosition();
-            if (pos == null) {
+            if (position == null) {
                 System.out.println("Printing in buildDebugInfo \n" + "Graph: " + graph +"\n" 
                 + "Block:" + this.currentBlock + "\n" + "Node is " + node + " it DOES NOT have source location");
             }else {
                 System.out.println("Printing in buildDebugInfo \n" + "Graph: " + graph +"\n" 
-                + "Block:" + this.currentBlock + "\n" + "Node is " + node + "\n" + "pos: " + pos);
+                + "Block:" + this.currentBlock + "\n" + "Node is " + node + "\n" + "pos: " + position);
             }
             
         }
 
+        // insert variable name to the definition point in the LLVM IR
         if (valueNodeToVarNameMap.containsKey(node)) {
             String varName = valueNodeToVarNameMap.get(node);
             setVarNameMetadata(instr, varName);
@@ -1636,151 +1526,43 @@ public class LLVMIRBuilder implements AutoCloseable {
             }
         }
 
+        // insert debug metadata if it is an invoke node as such node will always have a null position
         if (node instanceof InvokeNode) {
-            //if (checkNode) {
-                InvokeNode invokeNode = (InvokeNode)node;
-                //System.out.println("invoke bci is: " + invokeNode.bci());
-                int invokeNodeBCI = invokeNode.bci();
-                LineNumberTable lineNumberTable = this.mainMethod.getLineNumberTable();
-                if (lineNumberTable == null) return;
-                int[] bciInLineNumbertable = lineNumberTable.getBcis();
-                if (bciInLineNumbertable == null) return;
-                int bciOffset = -1;
-                for (int i = 0; i < bciInLineNumbertable.length - 1; i ++) {
-                    int bciOffsetBegin = bciInLineNumbertable[i];
-                    int bciOffsetEnd = bciInLineNumbertable[i + 1];
-
-                    if (invokeNodeBCI >= bciOffsetBegin && invokeNodeBCI < bciOffsetEnd) {
-                        bciOffset = bciOffsetBegin;
-                        break;
-                    }
-                }
-
-                if (bciOffset == -1) {
-                    if (checkNode) {
-                        System.out.println("I don't know why this happens");
-                    }
-                    return;
-                }
-
-                int lineNumber = lineNumberTable.getLineNumber(bciOffset);
-
-                setBciMetadata(instr, invokeNodeBCI);
-                setLineMetadata(instr, lineNumber);
-                if (checkNode) {
-                    System.out.println(
-                        "inserted line number for invoke: " + lineNumber
-                    );
-                }
-                DebugContext debugContext = node.getDebug();
-                LLVMDebugInfoProvider.LLVMLocationInfo dbgLocInfo =
-                        dbgInfoProvider.new LLVMLocationInfo(this.mainMethod, invokeNodeBCI, debugContext);
-                String filename = dbgLocInfo.fileName();
-                if (!filename.equals("")) {
-                    String directory = "";
-                    if (dbgLocInfo.filePath() != null) {
-                        directory = dbgLocInfo.filePath().toString();
-                    }
-                    LLVMMetadataRef diFile = getDiFile(filename, directory);
-                    LLVMMetadataRef subProgram = getSubProgram(diFile, this.mainMethod);
-                    LLVMMetadataRef diLocation = LLVM.LLVMDIBuilderCreateDebugLocation(context, lineNumber, invokeNodeBCI,
-                                    subProgram, null);
-                    LLVM.LLVMSetCurrentDebugLocation2(builder, diLocation);
-                    // not debug still 0 without appending this
-                    LLVM.LLVMSetInstDebugLocation(builder, instr);
-                    if (checkNode)
-                        System.out.println("\n");
-                    return;
-                }
-
-            //}
+            InvokeNode invokeNode = (InvokeNode)node;
+            CreateLLVMNativeDebugMetadata(invokeNode.bci(), null, instr, invokeNode);
         }
 
-        if (checkNode)
-            System.out.println("\n\n");
-
+        
         // If the subprogram is null, the debuginfo inside the function is ignored.
         if (this.diSubProgram != null) {
             if ((position != null)) {
-                DebugContext debugContext = node.getDebug();
-                LLVMDebugInfoProvider.LLVMLocationInfo dbgLocInfo =
-                        dbgInfoProvider.new LLVMLocationInfo(position.getMethod(), position.getBCI(), debugContext);
-                String filename = dbgLocInfo.fileName();
-                setBciMetadata(instr, position.getBCI());
-                setLineMetadata(instr, dbgLocInfo.line());
-		        // The llvm-link verifier doesn't allow null filenames for subprograms
-                if (!filename.equals("")) {
-                    String directory = "";
-                    if (dbgLocInfo.filePath() != null) {
-                        directory = dbgLocInfo.filePath().toString();
-                    }
-                    int lineNum = dbgLocInfo.line();
-                    LLVMMetadataRef diFile = getDiFile(filename, directory);
-                    LLVMMetadataRef subProgram = getSubProgram(diFile, position.getMethod());
-                    LLVMMetadataRef diLocation;
-                    // Means the method is inlined
-                    if (position.getMethod() != this.mainMethod) {
-                        // TODO: Is it possible to get the location where a method is inlined?
-                        LLVMMetadataRef inlinedAt = LLVM.LLVMDIBuilderCreateDebugLocation(context, 0, 0,
-                                this.diSubProgram, null);
-                        diLocation = LLVM.LLVMDIBuilderCreateDebugLocation(context, lineNum, position.getBCI(),
-                                subProgram, inlinedAt);
-                    } else {
-                        diLocation = LLVM.LLVMDIBuilderCreateDebugLocation(context, lineNum, position.getBCI(),
-                                subProgram, null);
-                    }
-                    LLVM.LLVMSetCurrentDebugLocation2(builder, diLocation);
-                    // Call instructions require the following API call for the debug info to be set corectly, not really sure why
-                    //if(LLVM.LLVMIsAInstruction(instr) != null){
-                    if ((LLVM.LLVMIsACallInst(instr) != null) || (LLVM.LLVMIsAInvokeInst(instr) != null) || (LLVM.LLVMIsABranchInst(instr) != null) || 
-                        (LLVM.LLVMIsAReturnInst(instr) != null)  ) {
-                        if (checkNode) {
-                            System.out.println("invoke LLVMSetInstDebugLocation !!!");
-                        }
-                        LLVM.LLVMSetInstDebugLocation(builder, instr);
-                    }
-                    // Check if this llvm instruction corresponds to any local variables declared
-                    //if (DebugInfoProviderHelper.getLocalsBySlot(position.getMethod(), position.getBCI()) != null) {
-                    if (position.getMethod() == this.mainMethod && DebugInfoProviderHelper.getLocalsBySlot(position.getMethod(), position.getBCI()) != null) {
-                        //createDILocalVariable(node, instr, diLocation, subProgram, lineNum, position.getBCI(), position.getMethod());
-                    }
-                    //}
-                    return;
-                }
+                CreateLLVMNativeDebugMetadata(position.getBCI(), position.getMethod(), instr, node);
+            } else {
+                // Set placeholder debug information to make llvm-link verifier pass
+                setPlaceHolderDiLocation(instr);
             }
-            // Set placeholder debug information to make llvm-link verifier pass
-            setPlaceHolderDiLocation(instr);
         }
         // Ignoring adding debug info for instructions with no positions, so if there are inlinable call instructions without
         // position, they will be caught by the asserts of the llvm-linker.
-  }
+
+        if (checkNode)
+            System.out.println("\n\n");
+    }
 
    public void setBciMetadata(LLVMValueRef instr, int bci) {
 	    LLVMMetadataRef bciNode = LLVM.LLVMMDStringInContext2(context, String.valueOf(bci), String.valueOf(bci).length());
 	    String kindID = "bci";
-	    // LLVMMetadataRef bciNode = LLVM.LLVMDIBuilderCreateConstantValueExpression(diBuilder, bci);
 	    setMetadata(instr, kindID, LLVM.LLVMMetadataAsValue(context, bciNode));
     }
 
     public void setSpecialRegCountMetadata(LLVMValueRef instr, int specialReg) {
 	    LLVMMetadataRef specialRegNode = LLVM.LLVMMDStringInContext2(context, String.valueOf(specialReg), String.valueOf(specialReg).length());
 	    String kindID = "specialReg";
-	    // LLVMMetadataRef bciNode = LLVM.LLVMDIBuilderCreateConstantValueExpression(diBuilder, bci);
 	    setMetadata(instr, kindID, LLVM.LLVMMetadataAsValue(context, specialRegNode));
     }
 
     public void setVarNameMetadata(LLVMValueRef instr, String varName) {
         String kindID = "varName";
-        // if (LLVM.LLVMHasMetadata(instr) > 0) {
-        //     LLVMValueRef metadata = getMetadata(instr, kindID);
-        //     //LLVMMetadataRef existingVarNameNode = LLVM.LLVMValueAsMetadata(metadata);
-        //     IntBuffer length = IntBuffer.allocate(10); // I bullshit this
-        //     String result = LLVM.LLVMGetMDString(metadata, length);
-        //     if (checkNode) {
-        //         System.out.println("The return result is: " + result);
-        //     }
-
-        // }
 	    LLVMMetadataRef varNameNode = LLVM.LLVMMDStringInContext2(context, String.valueOf(varName), String.valueOf(varName).length());
 	    setMetadata(instr, kindID, LLVM.LLVMMetadataAsValue(context, varNameNode));
     }
@@ -1788,7 +1570,6 @@ public class LLVMIRBuilder implements AutoCloseable {
     public void setLineMetadata(LLVMValueRef instr, int bci) {
 	    LLVMMetadataRef bciNode = LLVM.LLVMMDStringInContext2(context, String.valueOf(bci), String.valueOf(bci).length());
 	    String kindID = "line";
-	    // LLVMMetadataRef bciNode = LLVM.LLVMDIBuilderCreateConstantValueExpression(diBuilder, bci);
 	    setMetadata(instr, kindID, LLVM.LLVMMetadataAsValue(context, bciNode));
     }
 

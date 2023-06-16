@@ -183,18 +183,11 @@ public class NodeLLVMBuilder implements NodeLIRBuilderTool, SubstrateNodeLIRBuil
         if (block.toString().contains("B55")) builder.B55 = true;
         else builder.B55 = false;
         if (graph.toString().contains("org.apache.hadoop.hdfs.server.blockmanagement.BlockPlacementPolicyDefault.chooseRandom -> HotSpotMethod<BlockPlacementPolicyDefault.chooseRandom(int, String, Set, long, int, List, boolean, StorageType)")) {
-            // System.out.println("\n Printing in doBlock");
-            // System.out.println("Found target " + graph);
-            // System.out.println("This block is " + block);
             checkNode = true;
             builder.checkNode = true;
         }
         else {
             builder.checkNode = false;
-        }
-
-        if (checkNode) {
-            System.out.println("size of blockMap in do block" + blockMap.size());
         }
 
         gen.beginBlock(block);
@@ -314,18 +307,7 @@ public class NodeLLVMBuilder implements NodeLIRBuilderTool, SubstrateNodeLIRBuil
         }
 
         gen.getDebugInfoPrinter().printBlock(block);
-        // if (graph.toString().contains("org.apache.hadoop.hdfs.server.blockmanagement.BlockPlacementPolicyDefault.chooseRandom")) {
-        //     // System.out.println("\n Printing in doBlock");
-        //     // System.out.println("Found target " + graph);
-        //     // System.out.println("This block is " + block);
-        //     checkNode = true;
-        //     builder.checkNode = true;
-        // }
-        // else {
-        //     builder.checkNode = false;
-        // }
         
-
 
         for (Node node : blockMap.get(block)) {
             if (checkNode) {
@@ -340,23 +322,11 @@ public class NodeLLVMBuilder implements NodeLIRBuilderTool, SubstrateNodeLIRBuil
                 }else {
                     System.out.println("Printing in doBlock \n" + "Graph: " + graph +"\n" 
                     + "Block:" + block + "\n" + "Node is " + node + "\n" + "pos: " + pos +"\n");
-                    // System.out.println("Node is " + node + " and its bci is: " + pos.getBCI());
-                    // System.out.println("Node source position is " + pos);
-
                 }
                 System.out.println("\n");
             }
             if (node instanceof ValueNode) {
                 builder.CurrNode = (ValueNode)node;
-                // if (node.toString().contains("Return")) {
-                //     //System.out.println("We process return node in the Value map");
-                //     builder.ReturnNode = (ValueNode)node;
-                // } else if (node.toString().contains("+")) {
-                //     builder.AddNode = (ValueNode)node;
-                // }else {
-                //     builder.ReturnNode = null;
-                //     builder.AddNode = null;
-                // }
                 if (!valueMap.containsKey(node)) {
                     ValueNode valueNode = (ValueNode) node;
                     try {
@@ -384,14 +354,6 @@ public class NodeLLVMBuilder implements NodeLIRBuilderTool, SubstrateNodeLIRBuil
             builder.buildBranch(gen.getBlock(block.getFirstSuccessor()));
         }
 
-        //  for (Node node : blockMap.get(block)) {
-        //     if(valueMap.containsKey(node)) {
-        //         if (SubstrateOptions.GenerateDebugInfo.getValue() > 0) {
-        //             builder.buildDebugInfoForInstr(node, llvmOperand(node));
-        //         }
-        //     }
-
-        // }
         // Create function parameters if debug info is enabled.
         if (SubstrateOptions.GenerateDebugInfo.getValue() > 0) {
             if (block == graph.getLastSchedule().getCFG().getStartBlock()) {
@@ -441,7 +403,6 @@ public class NodeLLVMBuilder implements NodeLIRBuilderTool, SubstrateNodeLIRBuil
         int falseProbability = expandProbability(1 - i.getTrueSuccessorProbability());
         LLVMValueRef branchWeights = builder.branchWeights(builder.constantInt(trueProbability), builder.constantInt(falseProbability));
         builder.setMetadata(instr, "prof", branchWeights);
-        //builder.buildDebugInfoForInstr(condition, instr);
         builder.buildDebugInfoForInstr(i, instr);
     }
 

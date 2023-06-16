@@ -31,6 +31,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.ArrayList;
+import java.util.Arrays;
+
 import org.graalvm.compiler.nodeinfo.Verbosity;
 import org.graalvm.compiler.graph.Node;
 import org.graalvm.compiler.bytecode.Bytecode;
@@ -176,6 +178,37 @@ public class SubstrateLLVMBackend extends SubstrateBackend {
         return new NodeLLVMBuilder(graph, generator, getRuntimeConfiguration());
     }
 
+    
+    private static int numberOfArgumentInMethod(TreeMap<Integer, ArrayList<ValueNode>> sortedMap) {
+        Map.Entry<Integer, ArrayList<ValueNode>> firstEntry = null;
+        Iterator<Map.Entry<Integer, ArrayList<ValueNode>>> iterator = 
+            sortedMap.entrySet().iterator();
+        if (iterator.hasNext()) {
+            firstEntry = iterator.next();
+        }
+        int count = 0;
+        if (firstEntry != null) {
+            ArrayList<ValueNode> firstValue = firstEntry.getValue();
+            for (int i = 0; i < firstValue.size(); i ++) {
+                // arguments are assumed to be all nodes in the very first framestate which is the entry 
+                // point of the function. At this point, all other local variables that are yet to be 
+                // declared are pre-filled with null in the map
+                if (firstValue.get(i) != null) {
+                    count ++;
+                    if (checkNode) {
+                        System.out.println("parameter node is: " + firstValue.get(i));
+                    }
+                }
+            }
+            if (checkNode) {
+                System.out.println("count is: " + count);
+            }
+        }
+
+        return count;
+    }
+
+
     private static ArrayList<ValueNode> compareLocalVarDelta(
         ArrayList<ValueNode> localVariablePrev, 
         ArrayList<ValueNode> localVariableCurr,
@@ -193,32 +226,8 @@ public class SubstrateLLVMBackend extends SubstrateBackend {
         // is toggled, the below lines are not functioning at all
         assert localVariablePrev.size() == localVariableCurr.size();
         assert localVariableCurr.size() == processedSlot.size();
-
-        ArrayList<ValueNode> emptyDiff = new ArrayList<>();
-        // I don't understand why this if statement happens, will just return the empty
-        // update, after moving two map declared in member variable, this ridiculous condition disappear
-        // must be some multi-threading issue, but why, I have locks !!!
-        if (localVariablePrev.size() != localVariableCurr.size()) {
-            System.out.println("size are not equal");
-            checkNode = true;
-            printLocalVar(localVariablePrev, 0, 0);
-            printLocalVar(localVariableCurr, 0, 0);
-            checkNode = false;
-            return emptyDiff;
-        }
-
-        // same as above, no idea why this if statement is invoked
-        if (localVariablePrev.size() != processedSlot.size()) {
-            System.out.println("processSlot size are not equal");
-            checkNode = true;
-            printLocalVar(localVariablePrev, 0, 0);
-            System.out.println("processedSlot siez is: " + processedSlot.size());
-            //printLocalVar(localVariableCurr, 0, 0);
-            checkNode = false;
-            return emptyDiff;
-        }
         
-        ArrayList<ValueNode> temp = new ArrayList<>();
+        ArrayList<ValueNode> diffArray = new ArrayList<>();
         for (int i = 0; i < localVariablePrev.size(); i ++) {
             
             if (i > count && 
@@ -230,7 +239,7 @@ public class SubstrateLLVMBackend extends SubstrateBackend {
                 // we are NOT handling a function parameter
                 // we are seeing a delta
                 // we have NOT processed the node yet
-                temp.add(localVariableCurr.get(i));
+                diffArray.add(localVariableCurr.get(i));
             } else if (
                 i > count && 
                 localVariableCurr.get(i) == null &&
@@ -242,24 +251,28 @@ public class SubstrateLLVMBackend extends SubstrateBackend {
                 // to be free
                 processedSlot.set(i, false);
             } else {
-                temp.add(null);
+                diffArray.add(null);
             }
         }
 
-        return temp;
+        return diffArray;
     }
+
 
     private static void handleDiff(
             ArrayList<ValueNode> diffNode, 
             ArrayList<Boolean> processedSlot, 
             HashMap<ValueNode, String> valueNodeToVarNameMap,
-            Local[] localVars
+            ArrayList<Local> localVars
     ) {
         for (int i = 0; i < diffNode.size(); i ++) {
+            // skip variable that yet to be declared or dead as it exits its scope
             if (diffNode.get(i) == null) {
                 continue;
             }
 
+            // skip already processed variable, this condition means that the variable is assigned/used
+            // another time in the source code. But we do not care about the uses, only the definition point
             if (processedSlot.get(i) == true) {
                 continue;
             }
@@ -271,46 +284,32 @@ public class SubstrateLLVMBackend extends SubstrateBackend {
                 continue;
             }
 
-            int index = 0;
-            boolean inserted = false;
             
-            if (localVars != null) {
-                // index based isn't working, require slot chekcing
-                for (Local local : localVars) {
-                    if (local.getSlot() == (i)) {
-                        if (checkNode) {
-                            System.out.println(
-                                "The slot in diff array is: " + i + " " +
-                                "The processed Node is: " + diffNode.get(i) + "\n" +
-                                "Its name is " + local.getName() + "\n"
-                            );
-                        }
-                        valueNodeToVarNameMap.put(diffNode.get(i), local.getName());
-                        processedSlot.set(i, true);
-                        // remove from the local variable table once we inserted to the map
-                        // as this is inverse one to one mapped 
-                        inserted = true;
-                        break;
+            // index based isn't working, require slot checking
+            for (int j = 0; j < localVars.size(); j ++) {
+                if (localVars.get(j).getSlot() == (i)) {
+                    if (checkNode) {
+                        System.out.println(
+                            "The slot in diff array is: " + i + " " +
+                            "The processed Node is: " + diffNode.get(i) + "\n" +
+                            "Its name is " + localVars.get(j).getName() + "\n"
+                        );
                     }
-                    index ++;
-                }
-                if (inserted) {
-                    //localVars.remove(index);
-                    // ugly way to remove the inserted var name
+                    valueNodeToVarNameMap.put(diffNode.get(i), localVars.get(j).getName());
+                    processedSlot.set(i, true);
+                    // remove from the local variable table once we inserted to the map
+                    // as this is inverse one to one mapped 
                     // As we are processing the node following the line number order
                     // the uses of the slot in the local variable table shall also follow such manner
                     // Once a varname is used, we delete from the localVar array as it won't be used 
                     // again due to its inverse one to one mapping nature
-                    Local[] newLocalVars = new Local[localVars.length - 1];
-                    System.arraycopy(localVars, 0, newLocalVars, 0, index);
-                    System.arraycopy(localVars, index + 1,
-                        newLocalVars, index,
-                        localVars.length - index - 1);
-                    localVars = newLocalVars;
+                    localVars.remove(j);
+                    break;
                 }
             }
         }
     }
+
 
     private static void printLocalVar(ArrayList<ValueNode> varArray, int i, int a) {
         if (!checkNode) return;
@@ -326,42 +325,41 @@ public class SubstrateLLVMBackend extends SubstrateBackend {
         System.out.println("line number is: " + i + "\n and " + sb.toString() );
     }
 
-    private static void generate(NodeLLVMBuilder nodeBuilder, StructuredGraph graph) {
-        // my lock is added only in between generate function call; however, this is declared
-        // as the member variable in the class. So there will be data race when multiple thread 
-        // access these two vars
+
+    private static void varNameGenerate(
+        StructuredGraph.ScheduleResult schedule,
+        Block[] scheduledBlocks,
+        NodeLLVMBuilder nodeBuilder,
+        StructuredGraph graph
+    ) {
+        // allocating variables in the stack prevent data racing, although I have the lock guarding before
+        // and after the invocation of this function (not sure when threads are spawned).
         HashMap<Integer, ArrayList<ValueNode>> lineNumberToVarArrayMap = 
             new HashMap<Integer, ArrayList<ValueNode>>();
         HashMap<ValueNode, String> valueNodeToVarNameMap = 
             new HashMap<ValueNode, String>();
-        HashMap<ValueNode, Integer> frameStateNodeToLineNumberMap = 
-            new HashMap<ValueNode, Integer>();
-        //boolean checkNode = false;
         Local[] localVars = null;
-        // map definition point node to the variable declacred
-        if (graph.toString().contains("org.apache.hadoop.hdfs.server.blockmanagement.BlockPlacementPolicyDefault.chooseRandom -> HotSpotMethod<BlockPlacementPolicyDefault.chooseRandom(int, String, Set, long, int, List, boolean, StorageType)")) {
-            checkNode = true;
-        } else {
-            checkNode = false;
-        }
 
-        // initialize local variable table
+        // get the local variable table of this method from the bytecode
         localVars = DebugInfoProviderHelper.getAllLocalVar(graph.method());
-        if (localVars != null) {
-            for (Local localVar : localVars) {
-                if (checkNode) {
-                    System.out.println("Local var is: " + localVar.getName() + " and its slot is: " + localVar.getSlot());
-                }
+        if (localVars == null) {
+            // this entire algorithm relies on the mapping of local variable table
+            // if it does not exist, there's nothing we can do
+            return;
+        }
+        for (Local localVar : localVars) {
+            if (checkNode) {
+                System.out.println("Local var is: " + localVar.getName() + " and its slot is: " + localVar.getSlot());
             }
         }
+        // convert Java native array into the ArrayList for the convinence of deletion
+        ArrayList<Local> localVariables = new ArrayList<>(Arrays.asList(localVars));
 
-        StructuredGraph.ScheduleResult schedule = graph.getLastSchedule();
-        // this varies for each invocation, fixed it for this func
-        Block[] scheduledBlocks = schedule.getCFG().getBlocks();
+        // extract each snapshot of the frame state used in the method
         for (Block block : scheduledBlocks) {
             BlockMap<List<Node>> blockMap = schedule.getBlockToNodesMap();
             for (Node node : blockMap.get(block)) {
-                if (node instanceof FrameState ) {
+                if (node instanceof FrameState) {
                     FrameState fs = (FrameState) node;
                     ArrayList<ValueNode> localVariableArray = new ArrayList<>();
                     for (int i = 0; i < fs.localsSize(); i++) {
@@ -371,69 +369,69 @@ public class SubstrateLLVMBackend extends SubstrateBackend {
                             localVariableArray.add(fs.localAt(i));
                         }
                     }
-                    int lineNumber = fs.getCode().asStackTraceElement(fs.bci).getLineNumber();
-                    lineNumberToVarArrayMap.put(lineNumber ,localVariableArray);
-                    //frameStateNodeToLineNumberMap.put(node, lineNumber);
+                    lineNumberToVarArrayMap.put(
+                        fs.getCode().asStackTraceElement(fs.bci).getLineNumber() ,localVariableArray
+                    );
                 }
             }
         } 
 
-        // sort 
+        // sort a series of snapshot based on the line number
         TreeMap<Integer, ArrayList<ValueNode>> sortedMap = new TreeMap<>(lineNumberToVarArrayMap);
 
-        // calculate argument, assume first frame state list all arguments
+        // calculate argument, assume first frame state list all arguments as there is always a first
+        // state at the entry of the function call
         // we do not care the delta of these arguments
-        // if (checkNode) {
-        Map.Entry<Integer, ArrayList<ValueNode>> firstEntry = null;
-        Iterator<Map.Entry<Integer, ArrayList<ValueNode>>> iterator = 
-            sortedMap.entrySet().iterator();
-        if (iterator.hasNext()) {
-            firstEntry = iterator.next();
-        }
-        int count = 0;
-        if (firstEntry != null) {
-            ArrayList<ValueNode> firstValue = firstEntry.getValue();
-            for (int i = 0; i < firstValue.size(); i ++) {
-                if (firstValue.get(i) != null) {
-                    count ++;
-                    if (checkNode) {
-                        System.out.println("parameter node is: " + firstValue.get(i));
-                    }
-                }
-            }
-            if (checkNode) {
-                System.out.println("count is: " + count);
-            }
-        }
-
+        int count = numberOfArgumentInMethod(sortedMap);
         
+
+        // compare each snapshot and derive the mapping between definition Node and the variable name
         ArrayList<ValueNode> varArrayPrev = new ArrayList<>();
         ArrayList<Boolean> processedSlot = new ArrayList<>();
         for (Integer i : sortedMap.keySet()) {
             printLocalVar(sortedMap.get(i), i,  0);
 
-            //diff
+            // delta of neighbouring framestate snapshot, which shall be the newly declared variable
+            // for us to do the mapping between definition node and the variable name
             ArrayList<ValueNode> diffArray = compareLocalVarDelta(
                 varArrayPrev, sortedMap.get(i), count, processedSlot
             );
+
             printLocalVar(diffArray, i,  1);
             
-            handleDiff(diffArray, processedSlot, valueNodeToVarNameMap, localVars);
+            // assign the mapping between definition node and the variable name
+            handleDiff(diffArray, processedSlot, valueNodeToVarNameMap, localVariables);
             
             varArrayPrev = sortedMap.get(i);
         }
         
         
-
+        // assign the valueNodeToVarNameMap to the nodeBuilder such that when nodeBuilder is emitting
+        // LLVM instruction using graalVM graph's node, it can attach the corresponding variable name
+        // as the metadata to the instruction
         nodeBuilder.builder.valueNodeToVarNameMap = valueNodeToVarNameMap;
-        //nodeBuilder.builder.frameStateNodeToLineNumberMap = frameStateNodeToLineNumberMap;
+
+    } 
+
+    private static void generate(NodeLLVMBuilder nodeBuilder, StructuredGraph graph) {
+        StructuredGraph.ScheduleResult schedule = graph.getLastSchedule();
+        Block[] scheduledBlocks = schedule.getCFG().getBlocks();
+
+        // serve as a debugging utility
+        if (graph.toString().contains("org.apache.hadoop.hdfs.server.blockmanagement.BlockPlacementPolicyDefault.chooseRandom -> HotSpotMethod<BlockPlacementPolicyDefault.chooseRandom(int, String, Set, long, int, List, boolean, StorageType)")) {
+            checkNode = true;
+        } else {
+            checkNode = false;
+        }
+
+        // map defintion node with the variable name declared using a series of framestate snapshot
+        varNameGenerate(schedule, scheduledBlocks, nodeBuilder, graph);
 
         for (Block b : scheduledBlocks) {
             nodeBuilder.doBlock(b, graph, schedule.getBlockToNodesMap());
         }
 
         nodeBuilder.builder.globalVarListPerBlock.clear();
-        lineNumberToVarArrayMap.clear();
         nodeBuilder.finish();
     }
 
