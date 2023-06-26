@@ -334,6 +334,8 @@ public class SubstrateLLVMBackend extends SubstrateBackend {
             new HashMap<Integer, ArrayList<ValueNode>>();
         HashMap<ValueNode, String> valueNodeToVarNameMap = 
             new HashMap<ValueNode, String>();
+        HashMap<ValueNode, Integer> frameStateNodeToLineNumberMap = 
+            new HashMap<ValueNode, Integer>();
         //boolean checkNode = false;
         Local[] localVars = null;
         // map definition point node to the variable declacred
@@ -369,8 +371,9 @@ public class SubstrateLLVMBackend extends SubstrateBackend {
                             localVariableArray.add(fs.localAt(i));
                         }
                     }
-
-                    lineNumberToVarArrayMap.put(fs.getCode().asStackTraceElement(fs.bci).getLineNumber() ,localVariableArray);
+                    int lineNumber = fs.getCode().asStackTraceElement(fs.bci).getLineNumber();
+                    lineNumberToVarArrayMap.put(lineNumber ,localVariableArray);
+                    //frameStateNodeToLineNumberMap.put(node, lineNumber);
                 }
             }
         } 
@@ -423,6 +426,7 @@ public class SubstrateLLVMBackend extends SubstrateBackend {
         
 
         nodeBuilder.builder.valueNodeToVarNameMap = valueNodeToVarNameMap;
+        //nodeBuilder.builder.frameStateNodeToLineNumberMap = frameStateNodeToLineNumberMap;
 
         for (Block b : scheduledBlocks) {
             nodeBuilder.doBlock(b, graph, schedule.getBlockToNodesMap());
