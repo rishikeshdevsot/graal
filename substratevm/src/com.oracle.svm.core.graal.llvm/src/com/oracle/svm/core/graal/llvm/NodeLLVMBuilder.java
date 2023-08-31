@@ -182,7 +182,7 @@ public class NodeLLVMBuilder implements NodeLIRBuilderTool, SubstrateNodeLIRBuil
         boolean checkNode = false;
         if (block.toString().contains("B55")) builder.B55 = true;
         else builder.B55 = false;
-        if (graph.toString().contains("org.apache.hadoop.hdfs.server.blockmanagement.BlockPlacementPolicyDefault.chooseRandom -> HotSpotMethod<BlockPlacementPolicyDefault.chooseRandom(int, String, Set, long, int, List, boolean, StorageType)")) {
+        if (graph.toString().contains("org.apache.hadoop.util.LightWeightGSet.get")) {
             checkNode = true;
             builder.checkNode = true;
         }
@@ -199,6 +199,9 @@ public class NodeLLVMBuilder implements NodeLIRBuilderTool, SubstrateNodeLIRBuil
             }
 
             long startPatchpointID = LLVMGenerator.nextPatchpointId.getAndIncrement();
+            if (builder.checkNode) {
+                System.out.println("doblock state id is: " + startPatchpointID);
+            }
             builder.buildStackmap(builder.constantLong(startPatchpointID));
             gen.getCompilationResult().recordInfopoint(NumUtil.safeToInt(startPatchpointID), null, InfopointReason.METHOD_START);
 
@@ -577,6 +580,10 @@ public class NodeLLVMBuilder implements NodeLIRBuilderTool, SubstrateNodeLIRBuil
         boolean isVoid;
         LLVMValueRef[] args = getCallArguments(arguments, callTarget.callType(), targetMethod);
         long patchpointId = LLVMGenerator.nextPatchpointId.getAndIncrement();
+        if (builder.checkNode) {
+            System.out.println("targetMethod is: " + targetMethod);
+            System.out.println("emitInvoke state id is: " + patchpointId);
+        }
         if (callTarget instanceof DirectCallTargetNode) {
             callee = gen.getFunction(targetMethod);
             isVoid = gen.isVoidReturnType(gen.getLLVMFunctionReturnType(targetMethod, false));
@@ -607,7 +614,7 @@ public class NodeLLVMBuilder implements NodeLIRBuilderTool, SubstrateNodeLIRBuil
             throw shouldNotReachHere();
         }
 
-        LLVMValueRef call = emitCall(i, callTarget, callee, patchpointId, args);
+        LLVMValueRef call = emitCall(i, callTarget, callee, patchpointId, targetMethod, args);
 
 
         if (!isVoid) {
@@ -643,14 +650,16 @@ public class NodeLLVMBuilder implements NodeLIRBuilderTool, SubstrateNodeLIRBuil
         }
     }
 
-    private LLVMValueRef emitCall(Invoke invoke, LoweredCallTargetNode callTarget, LLVMValueRef callee, long patchpointId, LLVMValueRef... args) {
+    private LLVMValueRef emitCall(Invoke invoke, LoweredCallTargetNode callTarget, LLVMValueRef callee, long patchpointId, ResolvedJavaMethod targetMethod, LLVMValueRef... args) {
         if (builder.checkNode) {
             System.out.println("emit call is called");
+            System.out.println("callTarget is: " + callTarget);
+            System.out.println("invoke is: " + invoke);
         }
         boolean nativeABI = ((SubstrateCallingConventionType) callTarget.callType()).nativeABI;
         if (!SubstrateBackend.hasJavaFrameAnchor(callTarget)) {
             assert SubstrateBackend.getNewThreadStatus(callTarget) == VMThreads.StatusSupport.STATUS_ILLEGAL;
-            return emitCallInstruction(invoke, nativeABI, callee, patchpointId, args);
+            return emitCallInstruction(invoke, nativeABI, callee, patchpointId, targetMethod, args);
         }
         assert VMThreads.StatusSupport.isValidStatus(SubstrateBackend.getNewThreadStatus(callTarget));
 
@@ -682,10 +691,10 @@ public class NodeLLVMBuilder implements NodeLIRBuilderTool, SubstrateNodeLIRBuil
             newArgs[1] = callee;
             System.arraycopy(args, 0, newArgs, 2, args.length);
         }
-        return emitCallInstruction(invoke, nativeABI, wrapper, patchpointId, newArgs);
+        return emitCallInstruction(invoke, nativeABI, wrapper, patchpointId, targetMethod, newArgs);
     }
 
-    private LLVMValueRef emitCallInstruction(Invoke invoke, boolean nativeABI, LLVMValueRef callee, long patchpointId, LLVMValueRef... args) {
+    private LLVMValueRef emitCallInstruction(Invoke invoke, boolean nativeABI, LLVMValueRef callee, long patchpointId, ResolvedJavaMethod targetMethod,LLVMValueRef... args) {
         LLVMValueRef call;
         if (builder.checkNode) {
             System.out.println("emit call instruction is called");
@@ -699,6 +708,13 @@ public class NodeLLVMBuilder implements NodeLIRBuilderTool, SubstrateNodeLIRBuil
         } else {
             call = gen.buildStatepointCall(callee, nativeABI, patchpointId, args);
         }
+        if (builder.checkNode) {
+            System.out.println("target method is: " + "test");
+        }
+        if (targetMethod != null) {
+            builder.setFuncNameMetadata(call, targetMethod.toString());
+        }
+
         // test test
         return call;
     }

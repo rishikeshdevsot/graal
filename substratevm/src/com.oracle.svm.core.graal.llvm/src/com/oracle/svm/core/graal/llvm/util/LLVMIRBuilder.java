@@ -1573,6 +1573,12 @@ public class LLVMIRBuilder implements AutoCloseable {
 	    setMetadata(instr, kindID, LLVM.LLVMMetadataAsValue(context, bciNode));
     }
 
+    public void setFuncNameMetadata(LLVMValueRef instr, String varName) {
+        String kindID = "funcName";
+	    LLVMMetadataRef varNameNode = LLVM.LLVMMDStringInContext2(context, String.valueOf(varName), String.valueOf(varName).length());
+	    setMetadata(instr, kindID, LLVM.LLVMMetadataAsValue(context, varNameNode));
+    }
+
     // Set placeholder debug information to make llvm-link verifier pass
     public void setPlaceHolderDiLocation(LLVMValueRef instr) {
         if (((LLVM.LLVMIsACallInst(instr) != null) || (LLVM.LLVMIsAInvokeInst(instr) != null)) &&

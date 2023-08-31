@@ -82,6 +82,7 @@ import com.oracle.svm.core.graal.code.SubstrateCallingConventionType;
 import com.oracle.svm.core.graal.code.SubstrateDataBuilder;
 import com.oracle.svm.core.graal.code.SubstrateLIRGenerator;
 import com.oracle.svm.core.graal.llvm.LLVMFeature.LLVMVersionChecker;
+import com.oracle.svm.core.graal.llvm.LLVMGenerator.SpecialRegister;
 import com.oracle.svm.core.graal.llvm.replacements.LLVMIntrinsicGenerator;
 import com.oracle.svm.core.graal.llvm.runtime.LLVMExceptionUnwind;
 import com.oracle.svm.core.graal.llvm.util.LLVMIRBuilder;
@@ -933,7 +934,10 @@ public class LLVMGenerator implements LIRGeneratorTool, SubstrateLIRGenerator {
 
     public Variable emitForeignCall(ForeignCallLinkage linkage, LIRFrameState state, LLVMBasicBlockRef successor, LLVMBasicBlockRef handler, Value... arguments) {
         ResolvedJavaMethod targetMethod = ((SnippetRuntime.SubstrateForeignCallDescriptor) linkage.getDescriptor()).findMethod(getMetaAccess());
-
+        if (builder.checkNode) {
+            System.out.println("target method is: " + targetMethod);
+            System.out.println("linkage is: " + linkage);
+        }
         DebugInfo debugInfo = null;
         if (state != null) {
             state.initDebugInfo(null, false);
@@ -942,6 +946,10 @@ public class LLVMGenerator implements LIRGeneratorTool, SubstrateLIRGenerator {
 
         long patchpointId = nextPatchpointId.getAndIncrement();
         compilationResult.recordCall(NumUtil.safeToInt(patchpointId), 0, targetMethod, debugInfo, true);
+
+        if (builder.checkNode) {
+            System.out.println("state id is: " + patchpointId);
+        }
 
         LLVMValueRef callee = getFunction(targetMethod);
         LLVMValueRef[] args = Arrays.stream(arguments).map(LLVMUtils::getVal).toArray(LLVMValueRef[]::new);
@@ -956,8 +964,7 @@ public class LLVMGenerator implements LIRGeneratorTool, SubstrateLIRGenerator {
             assert successor != null && handler != null;
             call = buildStatepointInvoke(callee, nativeABI, successor, handler, patchpointId, callArguments);
         }
-//        LLVMMetadataRef mdString = builder.testString(builder.constantString("test2 more and more"));
-//        builder.setMetadata(call, "kind1", mdString);
+        builder.setFuncNameMetadata(call, targetMethod.toString());
 
         return (isVoidReturnType(getLLVMFunctionReturnType(targetMethod, false))) ? null : new LLVMVariable(call);
     }
@@ -1047,6 +1054,9 @@ public class LLVMGenerator implements LIRGeneratorTool, SubstrateLIRGenerator {
         builder.positionAtEnd(block);
 
         long startPatchpointId = LLVMGenerator.nextPatchpointId.getAndIncrement();
+        if (builder.checkNode) {
+            System.out.println("CreateJNITrampoline state id is: " + startPatchpointId);
+        }
         builder.buildStackmap(builder.constantLong(startPatchpointId));
         compilationResult.recordInfopoint(NumUtil.safeToInt(startPatchpointId), null, InfopointReason.METHOD_START);
 

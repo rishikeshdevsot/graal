@@ -418,7 +418,7 @@ public class SubstrateLLVMBackend extends SubstrateBackend {
         Block[] scheduledBlocks = schedule.getCFG().getBlocks();
 
         // serve as a debugging utility
-        if (graph.toString().contains("org.apache.hadoop.hdfs.server.blockmanagement.BlockPlacementPolicyDefault.chooseRandom -> HotSpotMethod<BlockPlacementPolicyDefault.chooseRandom(int, String, Set, long, int, List, boolean, StorageType)")) {
+        if (graph.toString().contains("org.apache.hadoop.util.LightWeightGSet.get")) {
             checkNode = true;
         } else {
             checkNode = false;
