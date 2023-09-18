@@ -182,19 +182,12 @@ public class NodeLLVMBuilder implements NodeLIRBuilderTool, SubstrateNodeLIRBuil
         boolean checkNode = false;
         if (block.toString().contains("B55")) builder.B55 = true;
         else builder.B55 = false;
-        if (graph.toString().contains("org.apache.hadoop.hdfs.server.blockmanagement.BlockPlacementPolicyDefault.chooseRandom -> HotSpotMethod<BlockPlacementPolicyDefault.chooseRandom(int, String, Set, long, int, List, boolean, StorageType)")) {
-            // System.out.println("\n Printing in doBlock");
-            // System.out.println("Found target " + graph);
-            // System.out.println("This block is " + block);
+        if (graph.toString().contains("org.apache.hadoop.util.LightWeightGSet.get")) {
             checkNode = true;
             builder.checkNode = true;
         }
         else {
             builder.checkNode = false;
-        }
-
-        if (checkNode) {
-            System.out.println("size of blockMap in do block" + blockMap.size());
         }
 
         gen.beginBlock(block);
@@ -206,6 +199,9 @@ public class NodeLLVMBuilder implements NodeLIRBuilderTool, SubstrateNodeLIRBuil
             }
 
             long startPatchpointID = LLVMGenerator.nextPatchpointId.getAndIncrement();
+            if (builder.checkNode) {
+                System.out.println("doblock state id is: " + startPatchpointID);
+            }
             builder.buildStackmap(builder.constantLong(startPatchpointID));
             gen.getCompilationResult().recordInfopoint(NumUtil.safeToInt(startPatchpointID), null, InfopointReason.METHOD_START);
 
@@ -314,18 +310,7 @@ public class NodeLLVMBuilder implements NodeLIRBuilderTool, SubstrateNodeLIRBuil
         }
 
         gen.getDebugInfoPrinter().printBlock(block);
-        // if (graph.toString().contains("org.apache.hadoop.hdfs.server.blockmanagement.BlockPlacementPolicyDefault.chooseRandom")) {
-        //     // System.out.println("\n Printing in doBlock");
-        //     // System.out.println("Found target " + graph);
-        //     // System.out.println("This block is " + block);
-        //     checkNode = true;
-        //     builder.checkNode = true;
-        // }
-        // else {
-        //     builder.checkNode = false;
-        // }
         
-
 
         for (Node node : blockMap.get(block)) {
             if (checkNode) {
@@ -340,23 +325,11 @@ public class NodeLLVMBuilder implements NodeLIRBuilderTool, SubstrateNodeLIRBuil
                 }else {
                     System.out.println("Printing in doBlock \n" + "Graph: " + graph +"\n" 
                     + "Block:" + block + "\n" + "Node is " + node + "\n" + "pos: " + pos +"\n");
-                    // System.out.println("Node is " + node + " and its bci is: " + pos.getBCI());
-                    // System.out.println("Node source position is " + pos);
-
                 }
                 System.out.println("\n");
             }
             if (node instanceof ValueNode) {
                 builder.CurrNode = (ValueNode)node;
-                // if (node.toString().contains("Return")) {
-                //     //System.out.println("We process return node in the Value map");
-                //     builder.ReturnNode = (ValueNode)node;
-                // } else if (node.toString().contains("+")) {
-                //     builder.AddNode = (ValueNode)node;
-                // }else {
-                //     builder.ReturnNode = null;
-                //     builder.AddNode = null;
-                // }
                 if (!valueMap.containsKey(node)) {
                     ValueNode valueNode = (ValueNode) node;
                     try {
@@ -384,14 +357,6 @@ public class NodeLLVMBuilder implements NodeLIRBuilderTool, SubstrateNodeLIRBuil
             builder.buildBranch(gen.getBlock(block.getFirstSuccessor()));
         }
 
-        //  for (Node node : blockMap.get(block)) {
-        //     if(valueMap.containsKey(node)) {
-        //         if (SubstrateOptions.GenerateDebugInfo.getValue() > 0) {
-        //             builder.buildDebugInfoForInstr(node, llvmOperand(node));
-        //         }
-        //     }
-
-        // }
         // Create function parameters if debug info is enabled.
         if (SubstrateOptions.GenerateDebugInfo.getValue() > 0) {
             if (block == graph.getLastSchedule().getCFG().getStartBlock()) {
@@ -441,7 +406,6 @@ public class NodeLLVMBuilder implements NodeLIRBuilderTool, SubstrateNodeLIRBuil
         int falseProbability = expandProbability(1 - i.getTrueSuccessorProbability());
         LLVMValueRef branchWeights = builder.branchWeights(builder.constantInt(trueProbability), builder.constantInt(falseProbability));
         builder.setMetadata(instr, "prof", branchWeights);
-        //builder.buildDebugInfoForInstr(condition, instr);
         builder.buildDebugInfoForInstr(i, instr);
     }
 
@@ -616,6 +580,10 @@ public class NodeLLVMBuilder implements NodeLIRBuilderTool, SubstrateNodeLIRBuil
         boolean isVoid;
         LLVMValueRef[] args = getCallArguments(arguments, callTarget.callType(), targetMethod);
         long patchpointId = LLVMGenerator.nextPatchpointId.getAndIncrement();
+        if (builder.checkNode) {
+            System.out.println("targetMethod is: " + targetMethod);
+            System.out.println("emitInvoke state id is: " + patchpointId);
+        }
         if (callTarget instanceof DirectCallTargetNode) {
             callee = gen.getFunction(targetMethod);
             isVoid = gen.isVoidReturnType(gen.getLLVMFunctionReturnType(targetMethod, false));
@@ -646,7 +614,7 @@ public class NodeLLVMBuilder implements NodeLIRBuilderTool, SubstrateNodeLIRBuil
             throw shouldNotReachHere();
         }
 
-        LLVMValueRef call = emitCall(i, callTarget, callee, patchpointId, args);
+        LLVMValueRef call = emitCall(i, callTarget, callee, patchpointId, targetMethod, args);
 
 
         if (!isVoid) {
@@ -682,14 +650,16 @@ public class NodeLLVMBuilder implements NodeLIRBuilderTool, SubstrateNodeLIRBuil
         }
     }
 
-    private LLVMValueRef emitCall(Invoke invoke, LoweredCallTargetNode callTarget, LLVMValueRef callee, long patchpointId, LLVMValueRef... args) {
+    private LLVMValueRef emitCall(Invoke invoke, LoweredCallTargetNode callTarget, LLVMValueRef callee, long patchpointId, ResolvedJavaMethod targetMethod, LLVMValueRef... args) {
         if (builder.checkNode) {
             System.out.println("emit call is called");
+            System.out.println("callTarget is: " + callTarget);
+            System.out.println("invoke is: " + invoke);
         }
         boolean nativeABI = ((SubstrateCallingConventionType) callTarget.callType()).nativeABI;
         if (!SubstrateBackend.hasJavaFrameAnchor(callTarget)) {
             assert SubstrateBackend.getNewThreadStatus(callTarget) == VMThreads.StatusSupport.STATUS_ILLEGAL;
-            return emitCallInstruction(invoke, nativeABI, callee, patchpointId, args);
+            return emitCallInstruction(invoke, nativeABI, callee, patchpointId, targetMethod, args);
         }
         assert VMThreads.StatusSupport.isValidStatus(SubstrateBackend.getNewThreadStatus(callTarget));
 
@@ -721,10 +691,10 @@ public class NodeLLVMBuilder implements NodeLIRBuilderTool, SubstrateNodeLIRBuil
             newArgs[1] = callee;
             System.arraycopy(args, 0, newArgs, 2, args.length);
         }
-        return emitCallInstruction(invoke, nativeABI, wrapper, patchpointId, newArgs);
+        return emitCallInstruction(invoke, nativeABI, wrapper, patchpointId, targetMethod, newArgs);
     }
 
-    private LLVMValueRef emitCallInstruction(Invoke invoke, boolean nativeABI, LLVMValueRef callee, long patchpointId, LLVMValueRef... args) {
+    private LLVMValueRef emitCallInstruction(Invoke invoke, boolean nativeABI, LLVMValueRef callee, long patchpointId, ResolvedJavaMethod targetMethod,LLVMValueRef... args) {
         LLVMValueRef call;
         if (builder.checkNode) {
             System.out.println("emit call instruction is called");
@@ -738,6 +708,13 @@ public class NodeLLVMBuilder implements NodeLIRBuilderTool, SubstrateNodeLIRBuil
         } else {
             call = gen.buildStatepointCall(callee, nativeABI, patchpointId, args);
         }
+        if (builder.checkNode) {
+            System.out.println("target method is: " + "test");
+        }
+        if (targetMethod != null) {
+            builder.setFuncNameMetadata(call, targetMethod.toString());
+        }
+
         // test test
         return call;
     }
