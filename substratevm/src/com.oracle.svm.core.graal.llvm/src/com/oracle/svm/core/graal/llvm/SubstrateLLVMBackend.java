@@ -418,7 +418,7 @@ public class SubstrateLLVMBackend extends SubstrateBackend {
         Block[] scheduledBlocks = schedule.getCFG().getBlocks();
 
         // serve as a debugging utility
-        if (graph.toString().contains("org.apache.hadoop.util.LightWeightGSet.get")) {
+        if (graph.toString().contains("org.apache.hadoop.hdfs.server.namenode.TestFsck")) {
             checkNode = true;
         } else {
             checkNode = false;

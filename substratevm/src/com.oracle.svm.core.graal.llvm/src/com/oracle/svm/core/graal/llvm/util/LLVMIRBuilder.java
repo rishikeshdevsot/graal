@@ -458,9 +458,12 @@ public class LLVMIRBuilder implements AutoCloseable {
                 // System.out.println("WRONG, local var array size is  " + localVars.length);
                 // System.out.println("WRONG, start offset at " + offset);
                 // System.out.println("WRONG, i at " + paramIndex);
-                if(!checkNode) continue;
+                //if(!checkNode) continue;
                 //continue;
             } 
+
+            if (index >= localVars.length) continue;
+            
             String paramName = localVars[index].getName();
             
             //String paramName = param.getName();

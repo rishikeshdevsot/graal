@@ -182,7 +182,7 @@ public class NodeLLVMBuilder implements NodeLIRBuilderTool, SubstrateNodeLIRBuil
         boolean checkNode = false;
         if (block.toString().contains("B55")) builder.B55 = true;
         else builder.B55 = false;
-        if (graph.toString().contains("org.apache.hadoop.util.LightWeightGSet.get")) {
+        if (graph.toString().contains("org.apache.hadoop.hdfs.server.namenode.TestFsck")) {
             checkNode = true;
             builder.checkNode = true;
         }
