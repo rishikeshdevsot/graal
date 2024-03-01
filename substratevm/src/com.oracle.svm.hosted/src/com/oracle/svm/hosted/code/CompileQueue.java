@@ -712,6 +712,23 @@ public class CompileQueue {
         fun.parse(debug, task.method, task.reason, runtimeConfig);
     }
 
+    public static boolean isBypass(HostedMethod method) {
+        String[] bypassFunctions = {
+            "ArraySet.allocArrays", 
+            "SimpleArrayMap.allocArrays", 
+            "ArraySet.freeArrays", 
+            "SimpleArrayMap.freeArrays",
+            "ArchTaskExecutor.getInstance"
+        };
+        
+        for (String bypassFunction : bypassFunctions) {
+            if (method.toString().contains(bypassFunction)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     @SuppressWarnings("try")
     private void defaultParseFunction(DebugContext debug, HostedMethod method, CompileReason reason, RuntimeConfiguration config) {
         if ((!NativeImageOptions.AllowFoldMethods.getValue() && method.getAnnotation(Fold.class) != null) || method.getAnnotation(NodeIntrinsic.class) != null) {
@@ -722,6 +739,12 @@ public class CompileQueue {
 
         HostedProviders providers = (HostedProviders) config.lookupBackend(method).getProviders();
         boolean needParsing = false;
+
+        if (isBypass(method)) {
+            //graph = null;
+            return;
+        }
+
         StructuredGraph graph = method.buildGraph(debug, method, providers, Purpose.AOT_COMPILATION);
         if (graph == null) {
             InvocationPlugin plugin = providers.getGraphBuilderPlugins().getInvocationPlugins().lookupInvocation(method);
@@ -971,6 +994,12 @@ public class CompileQueue {
             System.out.println("Compiling " + method.format("%r %H.%n(%p)") + "  [" + reason + "]");
         }
         //System.out.println("hello compile queue");
+
+        if (isBypass(method)) {
+            //graph = null;
+            return null;
+        }
+        
         try {
             SubstrateBackend backend = config.lookupBackend(method);
 

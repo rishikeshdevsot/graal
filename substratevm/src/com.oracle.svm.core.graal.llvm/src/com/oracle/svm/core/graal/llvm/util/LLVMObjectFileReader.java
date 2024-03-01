@@ -162,7 +162,7 @@ public class LLVMObjectFileReader {
 
     public void readStackMap(LLVMStackMapInfo info, CompilationResult compilation, ResolvedJavaMethod method, int id) {
         String methodSymbolName = SYMBOL_PREFIX + SubstrateUtil.uniqueShortName(method);
-
+        if (compilation == null) return;
         long startPatchpointID = compilation.getInfopoints().stream().filter(ip -> ip.reason == InfopointReason.METHOD_START).findFirst()
                         .orElseThrow(() -> new GraalError("no method start infopoint: " + methodSymbolName)).pcOffset;
         int totalFrameSize = NumUtil.safeToInt(info.getFunctionStackSize(startPatchpointID) + LLVMTargetSpecific.get().getCallFrameSeparation());

@@ -139,7 +139,9 @@ public class LLVMNativeImageCodeCache extends NativeImageCodeCache {
             methodIndex[id] = entry.getKey();
 
             try (FileOutputStream fos = new FileOutputStream(getBitcodePath(id).toString())) {
-                fos.write(entry.getValue().getTargetCode());
+                CompilationResult compilation = entry.getValue();
+                if (compilation == null) return;
+                fos.write(compilation.getTargetCode());
             } catch (IOException e) {
                 throw new GraalError(e);
             }

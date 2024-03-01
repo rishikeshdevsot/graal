@@ -50,6 +50,8 @@ public final class AnalysisParsedGraph {
     private final StructuredGraph graph;
     private final boolean isIntrinsic;
 
+    private static final AnalysisParsedGraph EMPTY = new AnalysisParsedGraph(null, false);
+
     private AnalysisParsedGraph(StructuredGraph graph, boolean isIntrinsic) {
         this.graph = graph;
         this.isIntrinsic = isIntrinsic;
@@ -63,6 +65,23 @@ public final class AnalysisParsedGraph {
         return isIntrinsic;
     }
 
+    public static boolean isBypass(AnalysisMethod method) {
+        String[] bypassFunctions = {
+            "ArraySet.allocArrays", 
+            "SimpleArrayMap.allocArrays", 
+            "ArraySet.freeArrays", 
+            "SimpleArrayMap.freeArrays",
+            "ArchTaskExecutor.getInstance"
+        };
+        
+        for (String bypassFunction : bypassFunctions) {
+            if (method.toString().contains(bypassFunction)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     @SuppressWarnings("try")
     public static AnalysisParsedGraph parseBytecode(BigBang bb, AnalysisMethod method) {
         if (bb == null) {
@@ -72,7 +91,10 @@ public final class AnalysisParsedGraph {
         OptionValues options = bb.getOptions();
         Description description = new Description(method, method.getClass().getSimpleName() + ":" + method.getId());
         DebugContext debug = new Builder(options, new GraalDebugHandlersFactory(bb.getProviders().getSnippetReflection())).description(description).build();
-
+        if (isBypass(method)) {
+            System.out.println("Analysis Parsed Graph for method " + method);
+            return EMPTY;
+        }
         try (Indent indent = debug.logAndIndent("parse graph %s", method)) {
 
             StructuredGraph graph = method.buildGraph(debug, method, bb.getProviders(), Purpose.ANALYSIS);
