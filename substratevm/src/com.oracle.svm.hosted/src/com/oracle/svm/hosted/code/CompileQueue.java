@@ -718,7 +718,8 @@ public class CompileQueue {
             "SimpleArrayMap.allocArrays", 
             "ArraySet.freeArrays", 
             "SimpleArrayMap.freeArrays",
-            "ArchTaskExecutor.getInstance"
+            "ArchTaskExecutor.getInstance",
+            "validateSpaceRelationship"
         };
         
         for (String bypassFunction : bypassFunctions) {

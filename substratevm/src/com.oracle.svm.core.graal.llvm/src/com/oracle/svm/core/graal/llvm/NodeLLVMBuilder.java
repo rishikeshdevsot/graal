@@ -33,6 +33,10 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.locks.ReentrantLock;
 
+import org.graalvm.compiler.nodes.FixedWithNextNode;
+import org.graalvm.compiler.nodes.EndNode;
+import org.graalvm.compiler.nodes.FixedGuardNode;
+import org.graalvm.compiler.nodes.FixedNode;
 import org.graalvm.compiler.code.CompilationResult;
 import org.graalvm.compiler.core.common.NumUtil;
 import org.graalvm.compiler.core.common.calc.Condition;
@@ -182,7 +186,7 @@ public class NodeLLVMBuilder implements NodeLIRBuilderTool, SubstrateNodeLIRBuil
         boolean checkNode = false;
         if (block.toString().contains("B55")) builder.B55 = true;
         else builder.B55 = false;
-        if (graph.toString().contains("handleTimelineEvents")) {
+        if (graph.toString().contains("HostedMethod<RoomSyncHandler.handleTimelineEvents")) {
             checkNode = true;
             builder.checkNode = true;
         }
@@ -324,8 +328,11 @@ public class NodeLLVMBuilder implements NodeLIRBuilderTool, SubstrateNodeLIRBuil
                     + "Block:" + block + "\n" + "Node is " + node + " it DOES NOT have source location\n");
                 }else {
                     System.out.println("Printing in doBlock \n" + "Graph: " + graph +"\n" 
-                    + "Block:" + block + "\n" + "Node is " + node + "\n" + "pos: " + pos +"\n");
+                    + "Block:" + block + "\n" + "Node is " + node.toString(Verbosity.All) + "\n" + "pos: " + pos +"\n");
                 }
+                System.out.println("node is alive: " + node.isAlive());
+                System.out.println("node is deleted: " + node.isDeleted());
+                System.out.println("node predecessor is: " + node.predecessor());
                 System.out.println("\n");
             }
             if (node instanceof ValueNode) {
