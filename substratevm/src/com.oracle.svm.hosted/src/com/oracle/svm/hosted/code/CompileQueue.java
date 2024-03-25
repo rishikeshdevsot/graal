@@ -719,7 +719,15 @@ public class CompileQueue {
             "ArraySet.freeArrays", 
             "SimpleArrayMap.freeArrays",
             "ArchTaskExecutor.getInstance",
-            "validateSpaceRelationship"
+            "validateSpaceRelationship",
+            "getEventId",
+            "getHideInvites",
+            "getType",
+            "getCurrentValue",
+            "orNull",
+            "getRoomId",
+            "readService",
+            "isEventRead"
         };
         
         for (String bypassFunction : bypassFunctions) {
@@ -1075,9 +1083,9 @@ public class CompileQueue {
         GraalConfiguration.instance().removeDeoptTargetOptimizations(suites);
 
         PhaseSuite<HighTierContext> highTier = suites.getHighTier();
-        VMError.guarantee(highTier.removePhase(PartialEscapePhase.class));
-        VMError.guarantee(highTier.removePhase(ReadEliminationPhase.class));
-        VMError.guarantee(highTier.removePhase(BoxNodeOptimizationPhase.class));
+        // VMError.guarantee(highTier.removePhase(PartialEscapePhase.class));
+        // VMError.guarantee(highTier.removePhase(ReadEliminationPhase.class));
+        // VMError.guarantee(highTier.removePhase(BoxNodeOptimizationPhase.class));
         PhaseSuite<MidTierContext> midTier = suites.getMidTier();
         VMError.guarantee(midTier.removePhase(FloatingReadPhase.class));
         PhaseSuite<LowTierContext> lowTier = suites.getLowTier();

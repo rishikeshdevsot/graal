@@ -264,7 +264,7 @@ public class CanonicalizerPhase extends BasePhase<CoreProviders> {
         @Override
         protected void run(StructuredGraph graph) {
 
-            if (graph.toString().contains("NotifiableEventProcessor.process")) {
+            if (graph.toString().contains("OutdatedEventDetector.isMessageOutdated")) {
                 // boolean lowerPass = false;
                 // StackTraceElement[] stackTraceElements = Thread.currentThread().getStackTrace();
                 // for (StackTraceElement element : stackTraceElements) {
@@ -349,7 +349,7 @@ public class CanonicalizerPhase extends BasePhase<CoreProviders> {
          * @return true if the graph was changed.
          */
         private boolean processNode(Node node) {
-            // if (node.graph().toString().contains("NotifiableEventProcessor.process")) {
+            // if (node.graph().toString().contains("OutdatedEventDetector.isMessageOutdated")) {
             //     return false;
             // }
             if (!node.isAlive()) {

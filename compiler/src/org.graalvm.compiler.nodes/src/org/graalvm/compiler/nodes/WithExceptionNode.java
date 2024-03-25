@@ -109,7 +109,7 @@ public abstract class WithExceptionNode extends ControlSplitNode {
      * exception path, e.g., by lowering into a {@link ForeignCallWithExceptionNode}.
      */
     public FixedNode replaceWithNonThrowing() {
-        if (graph().toString().contains("NotifiableEventProcessor.process")) {
+        if (graph().toString().contains("OutdatedEventDetector.isMessageOutdated")) {
             killExceptionEdge();
             AbstractBeginNode newExceptionEdge = graph().add(new BeginNode());
             newExceptionEdge.setNext(graph().add(new EndNode()));
