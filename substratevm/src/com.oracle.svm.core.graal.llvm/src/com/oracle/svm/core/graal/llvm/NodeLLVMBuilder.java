@@ -186,7 +186,7 @@ public class NodeLLVMBuilder implements NodeLIRBuilderTool, SubstrateNodeLIRBuil
         boolean checkNode = false;
         if (block.toString().contains("B55")) builder.B55 = true;
         else builder.B55 = false;
-        if (graph.toString().contains("HostedMethod<RoomSyncHandler.handleTimelineEvents")) {
+        if (graph.toString().contains("NotifiableEventProcessor.process")) {
             checkNode = true;
             builder.checkNode = true;
         }

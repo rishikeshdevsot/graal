@@ -776,7 +776,7 @@ public class InliningUtil extends ValueMergeUtil {
              * There is currently no global flag in StructuredGraph to distinguish such modes, but
              * the GuardsStage during inlining indicates the mode in which Graal operates.
              */
-            if (frameState.getMethod().toString().contains("HostedMethod<RoomSyncHandler.handleTimelineEvents")) {
+            if (frameState.getMethod().toString().contains("NotifiableEventProcessor.process")) {
                 System.out.println("Calling handle missing after exception frame state");
             }
             handleMissingAfterExceptionFrameState(frameState, invoke, replacements, alwaysDuplicateStateAfter);

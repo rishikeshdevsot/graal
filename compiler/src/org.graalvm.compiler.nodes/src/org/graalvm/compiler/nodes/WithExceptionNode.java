@@ -109,7 +109,7 @@ public abstract class WithExceptionNode extends ControlSplitNode {
      * exception path, e.g., by lowering into a {@link ForeignCallWithExceptionNode}.
      */
     public FixedNode replaceWithNonThrowing() {
-        if (graph().toString().contains("HostedMethod<RoomSyncHandler.handleTimelineEvents")) {
+        if (graph().toString().contains("NotifiableEventProcessor.process")) {
             killExceptionEdge();
             AbstractBeginNode newExceptionEdge = graph().add(new BeginNode());
             newExceptionEdge.setNext(graph().add(new EndNode()));

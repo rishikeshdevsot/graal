@@ -180,7 +180,7 @@ public class ConditionalEliminationPhase extends BasePhase<CoreProviders> {
     @Override
     @SuppressWarnings("try")
     protected void run(StructuredGraph graph, CoreProviders context) {
-        if (graph.toString().contains("HostedMethod<RoomSyncHandler.handleTimelineEvents")) {
+        if (graph.toString().contains("NotifiableEventProcessor.process")) {
             return;
         }
         try (DebugContext.Scope s = graph.getDebug().scope("DominatorConditionalElimination")) {

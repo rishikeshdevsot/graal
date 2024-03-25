@@ -56,7 +56,7 @@ public class RemoveUnwindPhase extends Phase {
 
     @Override
     protected void run(StructuredGraph graph) {
-        if (graph.toString().contains("HostedMethod<RoomSyncHandler.handleTimelineEvents")) {
+        if (graph.toString().contains("NotifiableEventProcessor.process")) {
             System.out.println("Calling remove unwind phase");
             return;
         }
