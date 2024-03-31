@@ -726,8 +726,27 @@ public class CompileQueue {
             "getCurrentValue",
             "orNull",
             "getRoomId",
-            "readService",
-            "isEventRead"
+            "getRealmConfiguration",
+            "getCanUseThreadReadReceiptsAndNotifications",
+            "getHomeServerCapabilities",
+            "getRoot",
+            "getSender",
+            "findFirst",
+            "createObject",
+            "setLocalId",
+            "setRoot",
+            "setEventId",
+            "setRoomId",
+            "setAnnotations",
+            "setDisplayIndex",
+            "setReadReceipts",
+            "setOwnedByThreadChunk",
+            "getAvatarUrl",
+            "getDisplayName",
+            "setSenderAvatar",
+            "setSenderName",
+            "setUniqueDisplayName",
+            "RealmList.add"
         };
         
         for (String bypassFunction : bypassFunctions) {

@@ -109,7 +109,7 @@ public abstract class WithExceptionNode extends ControlSplitNode {
      * exception path, e.g., by lowering into a {@link ForeignCallWithExceptionNode}.
      */
     public FixedNode replaceWithNonThrowing() {
-        if (graph().toString().contains("OutdatedEventDetector.isMessageOutdated")) {
+        if (graph().toString().contains("ChunkEntity.addTimelineEvent")) {
             killExceptionEdge();
             AbstractBeginNode newExceptionEdge = graph().add(new BeginNode());
             newExceptionEdge.setNext(graph().add(new EndNode()));

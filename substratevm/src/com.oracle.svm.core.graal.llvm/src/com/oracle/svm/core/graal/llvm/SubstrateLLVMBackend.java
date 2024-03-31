@@ -157,7 +157,7 @@ public class SubstrateLLVMBackend extends SubstrateBackend {
                     RegisterConfig config, LIRSuites lirSuites) {
         DebugContext debug = graph.getDebug();
         try (DebugContext.Scope s = debug.scope("BackEnd", graph.getLastSchedule()); DebugCloseable a = BackEnd.start(debug)) {
-            if (graph.toString().contains("OutdatedEventDetector.isMessageOutdated")) {
+            if (graph.toString().contains("ChunkEntity.addTimelineEvent")) {
                 for (Node n : graph.getNodes()) {
                     if (n instanceof UnreachableBeginNode) {
                         UnreachableBeginNode unreachableNode = (UnreachableBeginNode)n;

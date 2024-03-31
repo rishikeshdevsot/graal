@@ -59,7 +59,7 @@ public class LLVMLoadExceptionObjectLowering implements NodeLoweringProvider<Loa
         cFunctionEpilogueNode.setStateAfter(exceptionState);
         cFunctionEpilogueNode.lower(tool);
 
-        if (!graph.toString().contains("OutdatedEventDetector.isMessageOutdated")) {
+        if (!graph.toString().contains("ChunkEntity.addTimelineEvent")) {
             graph.addAfterFixed(readRegNode, graph.add(new ExceptionStateNode(exceptionState)));
         }
     }

@@ -180,7 +180,7 @@ public class ConditionalEliminationPhase extends BasePhase<CoreProviders> {
     @Override
     @SuppressWarnings("try")
     protected void run(StructuredGraph graph, CoreProviders context) {
-        if (graph.toString().contains("OutdatedEventDetector.isMessageOutdated")) {
+        if (graph.toString().contains("ChunkEntity.addTimelineEvent")) {
             return;
         }
         try (DebugContext.Scope s = graph.getDebug().scope("DominatorConditionalElimination")) {

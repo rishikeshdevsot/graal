@@ -56,7 +56,7 @@ public class RemoveUnwindPhase extends Phase {
 
     @Override
     protected void run(StructuredGraph graph) {
-        if (graph.toString().contains("OutdatedEventDetector.isMessageOutdated")) {
+        if (graph.toString().contains("ChunkEntity.addTimelineEvent")) {
             System.out.println("Calling remove unwind phase");
             return;
         }
