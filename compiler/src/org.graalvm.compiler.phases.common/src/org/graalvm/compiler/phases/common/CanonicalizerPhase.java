@@ -264,7 +264,7 @@ public class CanonicalizerPhase extends BasePhase<CoreProviders> {
         @Override
         protected void run(StructuredGraph graph) {
 
-            if (graph.toString().contains("ChunkEntity.addTimelineEvent")) {
+            if (graph.toString().contains("ReadQueries.isEventRead")) {
                 // boolean lowerPass = false;
                 // StackTraceElement[] stackTraceElements = Thread.currentThread().getStackTrace();
                 // for (StackTraceElement element : stackTraceElements) {
@@ -349,7 +349,7 @@ public class CanonicalizerPhase extends BasePhase<CoreProviders> {
          * @return true if the graph was changed.
          */
         private boolean processNode(Node node) {
-            // if (node.graph().toString().contains("ChunkEntity.addTimelineEvent")) {
+            // if (node.graph().toString().contains("ReadQueries.isEventRead")) {
             //     return false;
             // }
             if (!node.isAlive()) {

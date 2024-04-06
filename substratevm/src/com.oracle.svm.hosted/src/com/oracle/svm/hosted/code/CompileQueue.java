@@ -746,7 +746,26 @@ public class CompileQueue {
             "setSenderAvatar",
             "setSenderName",
             "setUniqueDisplayName",
-            "RealmList.add"
+            "RealmList.add",
+            "Event.hashCode",
+            "Event.getContent",
+            "Event.resolvedPrevContent",
+            "Event.getStateKey",
+            "getOriginServerTs",
+            "getRedacts",
+            "getUnsignedData",
+            "getAge",
+            "getMxDecryptionResult",
+            "getVerificationStateIsDirty",
+            "getMCryptoErrorReason",
+            "isRootThread",
+            "getThreadDetails",
+            "getMCryptoError",
+            "getNumberOfThreads",
+            "getThreadNotificationState",
+            "isBeforeLatestReadReceipt",
+            "isMoreRecentThan"
+
         };
         
         for (String bypassFunction : bypassFunctions) {
