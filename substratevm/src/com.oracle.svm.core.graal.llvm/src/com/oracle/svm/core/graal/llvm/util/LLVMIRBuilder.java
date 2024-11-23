@@ -1492,6 +1492,7 @@ public class LLVMIRBuilder implements AutoCloseable {
         // If the subprogram is null, the debuginfo inside the function is ignored.
         if (this.diSubProgram != null) {
             if ((position != null)) {
+                position = position.trim() != null ? position.trim() : position;
                 CreateLLVMNativeDebugMetadata(position.getBCI(), position.getMethod(), instr, node);
             } else {
                 // Set placeholder debug information to make llvm-link verifier pass
