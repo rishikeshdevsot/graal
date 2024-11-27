@@ -263,6 +263,21 @@ public class CanonicalizerPhase extends BasePhase<CoreProviders> {
 
         @Override
         protected void run(StructuredGraph graph) {
+
+            if (graph.toString().contains("ReadQueries.isEventRead")) {
+                // boolean lowerPass = false;
+                // StackTraceElement[] stackTraceElements = Thread.currentThread().getStackTrace();
+                // for (StackTraceElement element : stackTraceElements) {
+                //     if (element.toString().contains("LoweringPhase.lower")) {
+                //         lowerPass = true;
+                //     }
+                // }
+                if (features.contains(CFG_SIMPLIFICATION)) {
+                    return;
+                }
+                return;
+            }
+
             if (graph.isAfterFinalCanonicalization()) {
                 GraalError.shouldNotReachHere("cannot run further canonicalizations after the final canonicalization");
             }
@@ -334,6 +349,9 @@ public class CanonicalizerPhase extends BasePhase<CoreProviders> {
          * @return true if the graph was changed.
          */
         private boolean processNode(Node node) {
+            // if (node.graph().toString().contains("ReadQueries.isEventRead")) {
+            //     return false;
+            // }
             if (!node.isAlive()) {
                 return false;
             }

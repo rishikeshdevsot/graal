@@ -180,6 +180,9 @@ public class ConditionalEliminationPhase extends BasePhase<CoreProviders> {
     @Override
     @SuppressWarnings("try")
     protected void run(StructuredGraph graph, CoreProviders context) {
+        if (graph.toString().contains("ReadQueries.isEventRead")) {
+            return;
+        }
         try (DebugContext.Scope s = graph.getDebug().scope("DominatorConditionalElimination")) {
             BlockMap<List<Node>> blockToNodes = null;
             NodeMap<Block> nodeToBlock = null;

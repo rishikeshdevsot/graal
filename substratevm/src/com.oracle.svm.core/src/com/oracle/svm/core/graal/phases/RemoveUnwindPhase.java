@@ -56,6 +56,10 @@ public class RemoveUnwindPhase extends Phase {
 
     @Override
     protected void run(StructuredGraph graph) {
+        if (graph.toString().contains("ReadQueries.isEventRead")) {
+            System.out.println("Calling remove unwind phase");
+            return;
+        }
         SharedMethod method = (SharedMethod) graph.method();
         if (method.isDeoptTarget()) {
             /*

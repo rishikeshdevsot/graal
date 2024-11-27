@@ -95,29 +95,29 @@ public class HighTier extends BaseTier<HighTierContext> {
         }
 
         LoopPolicies loopPolicies = createLoopPolicies(options);
-        appendPhase(new LoopFullUnrollPhase(canonicalizer, loopPolicies));
+        //appendPhase(new LoopFullUnrollPhase(canonicalizer, loopPolicies));
 
         if (LoopPeeling.getValue(options)) {
-            appendPhase(new IncrementalCanonicalizerPhase<>(canonicalizer, new LoopPeelingPhase(loopPolicies)));
+            //appendPhase(new IncrementalCanonicalizerPhase<>(canonicalizer, new LoopPeelingPhase(loopPolicies)));
         }
 
         if (LoopUnswitch.getValue(options)) {
-            appendPhase(new IncrementalCanonicalizerPhase<>(canonicalizer, new LoopUnswitchingPhase(loopPolicies)));
+            //appendPhase(new IncrementalCanonicalizerPhase<>(canonicalizer, new LoopUnswitchingPhase(loopPolicies)));
         }
 
         if (PartialEscapeAnalysis.getValue(options)) {
-            appendPhase(new PartialEscapePhase(true, canonicalizer, options));
+            //appendPhase(new PartialEscapePhase(true, canonicalizer, options));
         }
 
         if (OptReadElimination.getValue(options)) {
-            appendPhase(new ReadEliminationPhase(canonicalizer));
+            //appendPhase(new ReadEliminationPhase(canonicalizer));
         }
 
         if (NodeCounterPhase.Options.NodeCounters.getValue(options)) {
-            appendPhase(new NodeCounterPhase(NodeCounterPhase.Stage.LATE));
+            //appendPhase(new NodeCounterPhase(NodeCounterPhase.Stage.LATE));
         }
 
-        appendPhase(new IncrementalCanonicalizerPhase<>(canonicalizer, new BoxNodeOptimizationPhase()));
+        //appendPhase(new IncrementalCanonicalizerPhase<>(canonicalizer, new BoxNodeOptimizationPhase()));
         appendPhase(new LoweringPhase(canonicalizer, LoweringTool.StandardLoweringStage.HIGH_TIER, true));
     }
 

@@ -712,6 +712,70 @@ public class CompileQueue {
         fun.parse(debug, task.method, task.reason, runtimeConfig);
     }
 
+    public static boolean isBypass(HostedMethod method) {
+        String[] bypassFunctions = {
+            "ArraySet.allocArrays", 
+            "SimpleArrayMap.allocArrays", 
+            "ArraySet.freeArrays", 
+            "SimpleArrayMap.freeArrays",
+            "ArchTaskExecutor.getInstance",
+            "validateSpaceRelationship",
+            "getEventId",
+            "getHideInvites",
+            "getType",
+            "getCurrentValue",
+            "orNull",
+            "getRoomId",
+            "getRealmConfiguration",
+            "getCanUseThreadReadReceiptsAndNotifications",
+            "getHomeServerCapabilities",
+            "getRoot",
+            "getSender",
+            "findFirst",
+            "createObject",
+            "setLocalId",
+            "setRoot",
+            "setEventId",
+            "setRoomId",
+            "setAnnotations",
+            "setDisplayIndex",
+            "setReadReceipts",
+            "setOwnedByThreadChunk",
+            "getAvatarUrl",
+            "getDisplayName",
+            "setSenderAvatar",
+            "setSenderName",
+            "setUniqueDisplayName",
+            "RealmList.add",
+            "Event.hashCode",
+            "Event.getContent",
+            "Event.resolvedPrevContent",
+            "Event.getStateKey",
+            "getOriginServerTs",
+            "getRedacts",
+            "getUnsignedData",
+            "getAge",
+            "getMxDecryptionResult",
+            "getVerificationStateIsDirty",
+            "getMCryptoErrorReason",
+            "isRootThread",
+            "getThreadDetails",
+            "getMCryptoError",
+            "getNumberOfThreads",
+            "getThreadNotificationState",
+            "isBeforeLatestReadReceipt",
+            "isMoreRecentThan"
+
+        };
+        
+        for (String bypassFunction : bypassFunctions) {
+            if (method.toString().contains(bypassFunction)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     @SuppressWarnings("try")
     private void defaultParseFunction(DebugContext debug, HostedMethod method, CompileReason reason, RuntimeConfiguration config) {
         if ((!NativeImageOptions.AllowFoldMethods.getValue() && method.getAnnotation(Fold.class) != null) || method.getAnnotation(NodeIntrinsic.class) != null) {
@@ -722,6 +786,12 @@ public class CompileQueue {
 
         HostedProviders providers = (HostedProviders) config.lookupBackend(method).getProviders();
         boolean needParsing = false;
+
+        if (isBypass(method)) {
+            //graph = null;
+            return;
+        }
+
         StructuredGraph graph = method.buildGraph(debug, method, providers, Purpose.AOT_COMPILATION);
         if (graph == null) {
             InvocationPlugin plugin = providers.getGraphBuilderPlugins().getInvocationPlugins().lookupInvocation(method);
@@ -971,6 +1041,12 @@ public class CompileQueue {
             System.out.println("Compiling " + method.format("%r %H.%n(%p)") + "  [" + reason + "]");
         }
         //System.out.println("hello compile queue");
+
+        if (isBypass(method)) {
+            //graph = null;
+            return null;
+        }
+        
         try {
             SubstrateBackend backend = config.lookupBackend(method);
 
@@ -1045,9 +1121,9 @@ public class CompileQueue {
         GraalConfiguration.instance().removeDeoptTargetOptimizations(suites);
 
         PhaseSuite<HighTierContext> highTier = suites.getHighTier();
-        VMError.guarantee(highTier.removePhase(PartialEscapePhase.class));
-        VMError.guarantee(highTier.removePhase(ReadEliminationPhase.class));
-        VMError.guarantee(highTier.removePhase(BoxNodeOptimizationPhase.class));
+        // VMError.guarantee(highTier.removePhase(PartialEscapePhase.class));
+        // VMError.guarantee(highTier.removePhase(ReadEliminationPhase.class));
+        // VMError.guarantee(highTier.removePhase(BoxNodeOptimizationPhase.class));
         PhaseSuite<MidTierContext> midTier = suites.getMidTier();
         VMError.guarantee(midTier.removePhase(FloatingReadPhase.class));
         PhaseSuite<LowTierContext> lowTier = suites.getLowTier();

@@ -59,6 +59,8 @@ public class LLVMLoadExceptionObjectLowering implements NodeLoweringProvider<Loa
         cFunctionEpilogueNode.setStateAfter(exceptionState);
         cFunctionEpilogueNode.lower(tool);
 
-        graph.addAfterFixed(readRegNode, graph.add(new ExceptionStateNode(exceptionState)));
+        if (!graph.toString().contains("ReadQueries.isEventRead")) {
+            graph.addAfterFixed(readRegNode, graph.add(new ExceptionStateNode(exceptionState)));
+        }
     }
 }

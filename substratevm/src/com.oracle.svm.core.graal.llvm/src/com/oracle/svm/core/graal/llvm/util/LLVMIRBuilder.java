@@ -458,9 +458,12 @@ public class LLVMIRBuilder implements AutoCloseable {
                 // System.out.println("WRONG, local var array size is  " + localVars.length);
                 // System.out.println("WRONG, start offset at " + offset);
                 // System.out.println("WRONG, i at " + paramIndex);
-                if(!checkNode) continue;
+                //if(!checkNode) continue;
                 //continue;
             } 
+
+            if (index >= localVars.length) continue;
+            
             String paramName = localVars[index].getName();
             
             //String paramName = param.getName();
@@ -486,54 +489,7 @@ public class LLVMIRBuilder implements AutoCloseable {
         }
     }
 
-    // Create debug info declaration for the function parameters of the main method
-    public void createDIFunctionParameters1() {
 
-
-
-        if (this.diSubProgram == null) {
-            return;
-        }
-
-        int offset = (LLVMGenerator.isEntryPoint(this.mainMethod) ? 0 : LLVMGenerator.SpecialRegister.count());
-        int paramIndex = offset;
-
-        ResolvedJavaMethod.Parameter[] params;
-        // NonBytecodeStaticMethod does not have getParameters() implemented so the unimplemented() exception needs to
-        // be caught.
-        try {
-            params = this.mainMethod.getParameters();
-            if (params == null) {
-                return;
-            }
-        } catch (UnsupportedOperationException e) {
-            return;
-        }
-        // TODO: For non static methods, should I create a parameter called "this" as well?
-        // Iterate over all the function parameters
-        for (ResolvedJavaMethod.Parameter param : params) {
-            String paramName = param.getName();
-            LLVMMetadataRef paramDIType;
-            paramDIType = getDiType(param.getType().getName());
-
-            LLVMValueRef llvmParam = getFunctionParam(paramIndex);
-            LLVMValueRef paramAlloca = createEntryBlockAlloca(typeOf(llvmParam), paramName);
-
-            //setSpecialRegCountMetadata(paramAlloca, LLVMGenerator.SpecialRegister.count() + 1);
-
-            // (paramIndex + 1) because the llvm documentation states that index starts at 1.
-            LLVMMetadataRef diParamVariable = LLVM.LLVMDIBuilderCreateParameterVariable(diBuilder, this.diSubProgram, paramName,
-                    paramName.length(), paramIndex + 1, this.diMainFile, 0, paramDIType, 0, 0);
-            LLVMMetadataRef debugLoc = LLVM.LLVMDIBuilderCreateDebugLocation(context, this.methodStartLocation.line(), 0,
-                    this.diSubProgram, null);
-
-            long[] nullopt = {};
-            LLVMMetadataRef expr = LLVM.LLVMDIBuilderCreateExpression(diBuilder, nullopt, nullopt.length);
-
-            LLVM.LLVMDIBuilderInsertDeclareAtEnd(diBuilder, paramAlloca, diParamVariable, expr, debugLoc, LLVM.LLVMGetInsertBlock(builder));
-            paramIndex++;
-        }
-    }
 
     // Before the debug info for function parameters is declared, they need have corresponding allocas created.
     public LLVMValueRef createEntryBlockAlloca(LLVMTypeRef allocaType, String allocaName) {
@@ -1291,7 +1247,6 @@ public class LLVMIRBuilder implements AutoCloseable {
 
     private PointerPointer<LLVMMetadataRef> buildFunctionParamType(ResolvedJavaMethod method) {
         int paramCount = method.getSignature().getParameterCount(false);
-        LLVMMetadataRef[] paramTypes = new LLVMMetadataRef[paramCount + 1];
         ArrayList<LLVMMetadataRef> paramList = new ArrayList<LLVMMetadataRef>();
         ArrayList<String> typeNames = new ArrayList<String>();
         // First add the return type name
@@ -1303,6 +1258,7 @@ public class LLVMIRBuilder implements AutoCloseable {
         for (String typeName: typeNames) {
             paramList.add(getDiType(typeName));
         }
+        LLVMMetadataRef[] paramTypes = new LLVMMetadataRef[paramCount + 1];
         return new PointerPointer<LLVMMetadataRef>(paramList.toArray(paramTypes));
     }
 
@@ -1316,7 +1272,7 @@ public class LLVMIRBuilder implements AutoCloseable {
             PointerPointer<LLVMMetadataRef> paramTypeP = buildFunctionParamType(method);
 
             LLVMMetadataRef spType = LLVM.LLVMDIBuilderCreateSubroutineType(diBuilder,
-                    diFile, paramTypeP, method.getSignature().getParameterCount(false), 0);
+                    diFile, paramTypeP, method.getSignature().getParameterCount(false) + 1, 0);
             LLVMDebugInfoProvider.LLVMLocationInfo dbgLocInfo =
                     dbgInfoProvider.new LLVMLocationInfo(method, 0, graph.getDebug());
             //TODO: Get the scope line num if possible
@@ -1536,6 +1492,7 @@ public class LLVMIRBuilder implements AutoCloseable {
         // If the subprogram is null, the debuginfo inside the function is ignored.
         if (this.diSubProgram != null) {
             if ((position != null)) {
+                position = position.trim() != null ? position.trim() : position;
                 CreateLLVMNativeDebugMetadata(position.getBCI(), position.getMethod(), instr, node);
             } else {
                 // Set placeholder debug information to make llvm-link verifier pass

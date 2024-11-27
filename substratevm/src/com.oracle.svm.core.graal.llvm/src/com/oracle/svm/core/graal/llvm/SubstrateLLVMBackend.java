@@ -82,6 +82,10 @@ import jdk.vm.ci.meta.ResolvedJavaMethod;
 import jdk.vm.ci.meta.VMConstant;
 import org.graalvm.nativeimage.ImageSingletons;
 
+import org.graalvm.compiler.nodes.util.GraphUtil;
+import org.graalvm.compiler.nodes.*;
+import org.graalvm.compiler.graph.NodeSourcePosition;
+
 public class SubstrateLLVMBackend extends SubstrateBackend {
     private static final TimerKey EmitLLVM = DebugContext.timer("EmitLLVM").doc("Time spent generating LLVM from HIR.");
     private static final TimerKey BackEnd = DebugContext.timer("BackEnd").doc("Time spent in EmitLLVM and Populate.");
@@ -122,12 +126,46 @@ public class SubstrateLLVMBackend extends SubstrateBackend {
         throw unimplemented();
     }
 
+    public static void printGraph(StructuredGraph graph) {
+        StructuredGraph.ScheduleResult schedule = graph.getLastSchedule();
+        Block[] scheduledBlocks = schedule.getCFG().getBlocks();
+        for (Block block : scheduledBlocks) {
+            for (Node node : schedule.getBlockToNodesMap().get(block)) {
+                if (node instanceof FrameState ) {
+                    Verbosity verbostiy = Verbosity.Debugger;
+                    System.out.println("The frame state node is: " + node.toString(verbostiy));
+                }
+                NodeSourcePosition pos = node.getNodeSourcePosition();
+                if (pos == null) {
+                    System.out.println("Printing in doBlock \n" + "Graph: " + graph +"\n" 
+                    + "Block:" + block + "\n" + "Node is " + node + " it DOES NOT have source location\n");
+                }else {
+                    System.out.println("Printing in doBlock \n" + "Graph: " + graph +"\n" 
+                    + "Block:" + block + "\n" + "Node is " + node.toString(Verbosity.All) + "\n" + "pos: " + pos +"\n");
+                }
+                System.out.println("node is alive: " + node.isAlive());
+                System.out.println("node is deleted: " + node.isDeleted());
+                System.out.println("node predecessor is: " + node.predecessor());
+                System.out.println("\n");
+            }
+        }
+    }
+
     @Override
     @SuppressWarnings("try")
     public void emitBackEnd(StructuredGraph graph, Object stub, ResolvedJavaMethod installedCodeOwner, CompilationResult result, CompilationResultBuilderFactory factory,
                     RegisterConfig config, LIRSuites lirSuites) {
         DebugContext debug = graph.getDebug();
         try (DebugContext.Scope s = debug.scope("BackEnd", graph.getLastSchedule()); DebugCloseable a = BackEnd.start(debug)) {
+            if (graph.toString().contains("ReadQueries.isEventRead")) {
+                for (Node n : graph.getNodes()) {
+                    if (n instanceof UnreachableBeginNode) {
+                        UnreachableBeginNode unreachableNode = (UnreachableBeginNode)n;
+                        //GraphUtil.killCFG(unreachableNode);
+                    }
+                }
+            }
+            //printGraph(graph);
             emitLLVM(graph, result);
             dumpDebugInfo(result, graph);
         } catch (Throwable e) {
@@ -418,7 +456,7 @@ public class SubstrateLLVMBackend extends SubstrateBackend {
         Block[] scheduledBlocks = schedule.getCFG().getBlocks();
 
         // serve as a debugging utility
-        if (graph.toString().contains("org.apache.hadoop.util.LightWeightGSet.get")) {
+        if (graph.toString().contains("org.apache.hadoop.hdfs.server.namenode.TestFsck")) {
             checkNode = true;
         } else {
             checkNode = false;

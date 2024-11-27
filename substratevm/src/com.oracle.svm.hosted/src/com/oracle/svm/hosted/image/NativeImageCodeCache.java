@@ -144,6 +144,7 @@ public abstract class NativeImageCodeCache {
 
     public void layoutConstants() {
         for (CompilationResult compilation : compilations.values()) {
+            if (compilation == null) return;
             for (DataSection.Data data : compilation.getDataSection()) {
                 if (data instanceof SubstrateDataBuilder.ObjectData) {
                     JavaConstant constant = ((SubstrateDataBuilder.ObjectData) data).getConstant();

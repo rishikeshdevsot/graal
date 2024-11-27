@@ -75,7 +75,7 @@ public class LowTier extends BaseTier<LowTierContext> {
 
         appendPhase(canonicalizerWithoutGVN.copyWithoutFurtherCanonicalizations());
 
-        appendPhase(new DeadCodeEliminationPhase(Required));
+        //appendPhase(new DeadCodeEliminationPhase(Required));
 
         appendPhase(new PropagateDeoptimizeProbabilityPhase());
 
